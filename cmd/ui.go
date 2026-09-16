@@ -44,6 +44,7 @@ type downloadModel struct {
 	done                  bool
 	cancelling            bool
 	err                   error
+	finishedAt            time.Time
 	pendingPercent        float64
 	progressSyncScheduled bool
 }
@@ -57,6 +58,7 @@ func newDownloadModel(client s3API, request downloadRequest) downloadModel {
 	bar := progress.New(
 		progress.WithWidth(56),
 		progress.WithColors(lipgloss.Color(accentColor)),
+		progress.WithFillCharacters('━', ' '),
 		progress.WithSpringOptions(20, 0.85),
 	)
 	return downloadModel{
@@ -137,6 +139,9 @@ func (m downloadModel) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.pendingPercent = percent
 		if message.done {
+			if m.finishedAt.IsZero() {
+				m.finishedAt = time.Now()
+			}
 			m.progressSyncScheduled = false
 			animation := m.progress.SetPercent(percent)
 			m.done = true
@@ -170,6 +175,7 @@ func (m downloadModel) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	case downloadEventsClosedMsg:
 		if !m.done {
 			m.done = true
+			m.finishedAt = time.Now()
 			m.err = errors.New("下载任务意外结束")
 			m.stage = "下载失败"
 		}
@@ -196,9 +202,14 @@ func (m downloadModel) View() tea.View {
 	builder.WriteString(m.progress.View())
 	builder.WriteString("\n")
 	builder.WriteString(fmt.Sprintf("%s / %s", formatBytes(m.downloaded), formatBytes(m.total)))
-	if speed := m.bytesPerSecond(); speed > 0 {
+	speed := m.bytesPerSecond()
+	if speed > 0 {
 		builder.WriteString(fmt.Sprintf("  %s/s", formatBytes(speed)))
-		if eta := m.eta(speed); eta > 0 && !m.done {
+	}
+	if m.done {
+		builder.WriteString(fmt.Sprintf("  耗时 %s", formatDuration(m.elapsed())))
+	} else if speed > 0 {
+		if eta := m.eta(speed); eta > 0 {
 			builder.WriteString(fmt.Sprintf("  剩余 %s", formatDuration(eta)))
 		}
 	}
@@ -208,6 +219,8 @@ func (m downloadModel) View() tea.View {
 		builder.WriteString(errorStyle.Render("失败 · " + m.err.Error()))
 	case m.done && m.err == nil:
 		builder.WriteString(successStyle.Render("完成 · 文件已保存"))
+	case m.done && errors.Is(m.err, context.Canceled):
+		builder.WriteString(labelStyle.Render("已取消"))
 	case m.cancelling:
 		builder.WriteString(labelStyle.Render("正在取消并清理临时文件…"))
 	default:
@@ -241,11 +254,24 @@ func (m downloadModel) percent() float64 {
 }
 
 func (m downloadModel) bytesPerSecond() int64 {
-	elapsed := time.Since(m.startedAt).Seconds()
+	elapsed := m.elapsed().Seconds()
 	if elapsed <= 0 || m.downloaded <= 0 {
 		return 0
 	}
 	return int64(float64(m.downloaded) / elapsed)
+}
+
+// elapsed returns the download runtime, frozen when a terminal progress event
+// arrives so the UI exit delay is not included.
+func (m downloadModel) elapsed() time.Duration {
+	end := time.Now()
+	if !m.finishedAt.IsZero() {
+		end = m.finishedAt
+	}
+	if m.startedAt.IsZero() || end.Before(m.startedAt) {
+		return 0
+	}
+	return end.Sub(m.startedAt)
 }
 
 func (m downloadModel) eta(speed int64) time.Duration {

@@ -1,6 +1,6 @@
 # s3get
 
-`s3get` 是一个基于 Bubble Tea 的 S3 并发分片下载工具。S3 URI 模式通过 `HeadObject` 获取对象大小，预签名 URL 模式通过 `GET bytes=0-0` 探测大小，随后自动规划 Range 分片并发下载；界面使用 Bubbles Animated Progress 展示实时进度、速度和剩余时间。
+`s3get` 是一个基于 Bubble Tea 的 S3 并发分片下载工具。S3 URI 模式通过 `HeadObject` 获取对象大小，预签名 URL 模式通过 `GET bytes=0-0` 探测大小，随后自动规划 Range 分片并发下载；界面使用 Bubbles Animated Progress 展示实时进度、速度、剩余时间和最终耗时。
 
 下载内容先写入目标目录中的临时文件。所有分片完成并同步到磁盘后才提交为最终文件；失败或取消时会清理临时文件。每个分片最多尝试 3 次，请求通过 ETag `If-Match` 固定对象版本，并校验每片响应的 ETag。若服务端未提供强 ETag，工具会自动降为单 Range 请求，避免并发拼接到不同版本的内容。
 

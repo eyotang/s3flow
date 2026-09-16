@@ -1,8 +1,11 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 )
@@ -63,6 +66,9 @@ func TestCompletedEmptyObjectAnimatesToFull(t *testing.T) {
 	if result.progress.Percent() != 1 {
 		t.Fatalf("expected completed empty object to target 100%%, got %v", result.progress.Percent())
 	}
+	if !strings.Contains(result.View().Content, "耗时 ") {
+		t.Fatalf("expected completed empty object to show elapsed time, got:\n%s", result.View().Content)
+	}
 }
 
 func TestRapidProgressUpdatesDoNotStarveAnimatedProgress(t *testing.T) {
@@ -106,5 +112,117 @@ func TestRapidProgressUpdatesDoNotStarveAnimatedProgress(t *testing.T) {
 	}
 	if strings.HasSuffix(result.progress.View(), "  0%") {
 		t.Fatalf("rapid target updates starved animated frames:\n%s", result.progress.View())
+	}
+}
+
+func TestCompletedViewShowsElapsedInsteadOfRemainingTime(t *testing.T) {
+	model := newDownloadModel(nil, downloadRequest{})
+	defer model.cancel()
+	model.startedAt = time.Now().Add(-3 * time.Second)
+
+	updated, _ := model.Update(downloadProgress{
+		stage:      "下载完成",
+		downloaded: 100,
+		total:      100,
+		done:       true,
+	})
+	result := updated.(downloadModel)
+	view := result.View().Content
+	if !strings.Contains(view, "耗时 ") {
+		t.Fatalf("expected completed view to contain elapsed time, got:\n%s", view)
+	}
+	if strings.Contains(view, "剩余 ") {
+		t.Fatalf("completed view must not contain remaining time, got:\n%s", view)
+	}
+	if result.finishedAt.IsZero() {
+		t.Fatal("expected completion time to be frozen")
+	}
+	if result.elapsed() != result.finishedAt.Sub(result.startedAt) {
+		t.Fatalf("elapsed time was not frozen at completion: %s", result.elapsed())
+	}
+}
+
+func TestProgressUsesContinuousLineCharacters(t *testing.T) {
+	model := newDownloadModel(nil, downloadRequest{})
+	defer model.cancel()
+	if model.progress.Full != '━' || model.progress.Empty != ' ' {
+		t.Fatalf("progress characters = %q/%q, want continuous line with blank remainder", model.progress.Full, model.progress.Empty)
+	}
+}
+
+func TestActiveViewShowsRemainingInsteadOfElapsedTime(t *testing.T) {
+	model := newDownloadModel(nil, downloadRequest{})
+	defer model.cancel()
+	model.startedAt = time.Now().Add(-10 * time.Second)
+
+	updated, _ := model.Update(downloadProgress{
+		stage:      "下载中",
+		downloaded: 50,
+		total:      100,
+	})
+	view := updated.(downloadModel).View().Content
+	if !strings.Contains(view, "剩余 ") {
+		t.Fatalf("expected active view to contain remaining time, got:\n%s", view)
+	}
+	if strings.Contains(view, "耗时 ") {
+		t.Fatalf("active view must not contain final elapsed time, got:\n%s", view)
+	}
+}
+
+func TestCanceledViewShowsTerminalStateAndElapsedTime(t *testing.T) {
+	model := newDownloadModel(nil, downloadRequest{})
+	defer model.cancel()
+	model.startedAt = time.Now().Add(-2 * time.Second)
+	model.cancelling = true
+
+	updated, _ := model.Update(downloadProgress{
+		stage: "已取消",
+		done:  true,
+		err:   context.Canceled,
+	})
+	view := updated.(downloadModel).View().Content
+	for _, expected := range []string{"已取消", "耗时 "} {
+		if !strings.Contains(view, expected) {
+			t.Fatalf("expected canceled view to contain %q, got:\n%s", expected, view)
+		}
+	}
+	if strings.Contains(view, "正在取消") || strings.Contains(view, "剩余 ") {
+		t.Fatalf("canceled terminal view contains an active-state label:\n%s", view)
+	}
+}
+
+func TestFailedViewsShowElapsedTime(t *testing.T) {
+	tests := []struct {
+		name    string
+		message tea.Msg
+	}{
+		{
+			name: "download failure",
+			message: downloadProgress{
+				stage: "下载失败",
+				done:  true,
+				err:   errors.New("fixture failure"),
+			},
+		},
+		{name: "event channel closed", message: downloadEventsClosedMsg{}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			model := newDownloadModel(nil, downloadRequest{})
+			defer model.cancel()
+			model.startedAt = time.Now().Add(-time.Second)
+
+			updated, _ := model.Update(test.message)
+			result := updated.(downloadModel)
+			view := result.View().Content
+			for _, expected := range []string{"失败", "耗时 "} {
+				if !strings.Contains(view, expected) {
+					t.Fatalf("expected failed view to contain %q, got:\n%s", expected, view)
+				}
+			}
+			if result.finishedAt.IsZero() || strings.Contains(view, "剩余 ") {
+				t.Fatalf("failed terminal view did not freeze elapsed time:\n%s", view)
+			}
+		})
 	}
 }

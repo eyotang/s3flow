@@ -338,7 +338,7 @@ func parseDownloadSource(raw string) (downloadSource, error) {
 		return downloadSource{
 			bucket:   bucket,
 			key:      key,
-			display:  "s3://" + bucket + "/" + key,
+			display:  formatS3URIForDisplay(bucket, key),
 			filename: path.Base(key),
 		}, nil
 	}
@@ -365,6 +365,17 @@ func parseDownloadSource(raw string) (downloadSource, error) {
 		display:      safeURLDisplay(parsed),
 		filename:     filename,
 	}, nil
+}
+
+// formatS3URIForDisplay returns a canonical, terminal-safe S3 URI while the
+// decoded key remains available separately for SDK requests.
+func formatS3URIForDisplay(bucket, key string) string {
+	displayURL := &url.URL{
+		Scheme: "s3",
+		Host:   bucket,
+		Path:   "/" + key,
+	}
+	return displayURL.String()
 }
 
 func safeURLDisplay(parsed *url.URL) string {
@@ -490,17 +501,23 @@ func normalizeEndpoint(raw string) (string, error) {
 	return strings.TrimRight(parsed.String(), "/"), nil
 }
 
+// parseS3URI separates the bucket and key, then decodes URI path escapes in
+// the key exactly once so the AWS SDK can apply the required HTTP escaping.
 func parseS3URI(raw string) (string, string, error) {
 	if !strings.HasPrefix(raw, "s3://") {
 		return "", "", fmt.Errorf("对象地址必须使用 s3://bucket/key 格式: %q", raw)
 	}
 	remainder := strings.TrimPrefix(raw, "s3://")
-	bucket, key, found := strings.Cut(remainder, "/")
-	if !found || strings.TrimSpace(bucket) == "" || key == "" {
+	bucket, escapedKey, found := strings.Cut(remainder, "/")
+	if !found || strings.TrimSpace(bucket) == "" || escapedKey == "" {
 		return "", "", fmt.Errorf("对象地址必须包含 bucket 和 key: %q", raw)
 	}
-	if strings.ContainsAny(bucket, "?#") || strings.ContainsAny(key, "?#") {
+	if strings.ContainsAny(bucket, "?#") || strings.ContainsAny(escapedKey, "?#") {
 		return "", "", fmt.Errorf("对象地址不能包含 query 或 fragment: %q", raw)
+	}
+	key, err := url.PathUnescape(escapedKey)
+	if err != nil {
+		return "", "", fmt.Errorf("对象 key 包含无效的 percent 编码: %w", err)
 	}
 	return bucket, key, nil
 }

@@ -82,6 +82,15 @@ https://s3.example.com/my-bucket/path/to/object.bin
 
 这可直接兼容 XSky、MinIO 等不提供 `bucket.endpoint` DNS 解析的 S3 兼容服务。如果目标服务要求虚拟主机寻址，可传入 `--path-style=false`，请求会改为 `https://my-bucket.s3.example.com/path/to/object.bin`。
 
+S3 URI 的对象 key 既可以直接使用 Unicode，也可以使用 URL percent 编码。工具会将路径编码解码一次，再交给 AWS SDK 生成请求，例如下面两种写法指向同一个对象：
+
+```text
+s3://checkpoint/线上服/object.gz
+s3://checkpoint/%E7%BA%BF%E4%B8%8A%E6%9C%8D/object.gz
+```
+
+`+` 按路径字符处理，不会转换为空格；对象名中的字面 `%` 应写成 `%25`。
+
 ## 使用
 
 参数定义和帮助文案由 Go `flag` 包统一生成：

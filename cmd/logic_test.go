@@ -85,6 +85,97 @@ func TestParseCLIAllowsDisablingDefaultPathStyle(t *testing.T) {
 	}
 }
 
+func TestParseS3URIDecodesEscapedObjectKey(t *testing.T) {
+	const source = "s3://checkpoint/%E7%BA%BF%E4%B8%8A%E6%9C%8D_rm42_p4.internal.example/2026-09-13_040000/master.ckp.147.gz"
+	const wantKey = "线上服_rm42_p4.internal.example/2026-09-13_040000/master.ckp.147.gz"
+
+	bucket, key, err := parseS3URI(source)
+	if err != nil {
+		t.Fatalf("parse escaped S3 URI: %v", err)
+	}
+	if bucket != "checkpoint" {
+		t.Fatalf("bucket = %q, want checkpoint", bucket)
+	}
+	if key != wantKey {
+		t.Fatalf("key = %q, want decoded key %q", key, wantKey)
+	}
+}
+
+func TestParseS3URIPathEscapingRules(t *testing.T) {
+	tests := []struct {
+		name    string
+		source  string
+		wantKey string
+	}{
+		{
+			name:    "native unicode",
+			source:  "s3://checkpoint/线上服/object.gz",
+			wantKey: "线上服/object.gz",
+		},
+		{
+			name:    "plus is not a space",
+			source:  "s3://checkpoint/folder+name/file%20name.gz",
+			wantKey: "folder+name/file name.gz",
+		},
+		{
+			name:    "escaped slash and percent",
+			source:  "s3://checkpoint/folder%2Fnested/100%25.gz",
+			wantKey: "folder/nested/100%.gz",
+		},
+		{
+			name:    "escaped percent sequence stays literal",
+			source:  "s3://checkpoint/literal%252Fname.gz",
+			wantKey: "literal%2Fname.gz",
+		},
+		{
+			name:    "escaped query and fragment characters",
+			source:  "s3://checkpoint/literal%3Fquery%23fragment.gz",
+			wantKey: "literal?query#fragment.gz",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, key, err := parseS3URI(test.source)
+			if err != nil {
+				t.Fatalf("parse S3 URI: %v", err)
+			}
+			if key != test.wantKey {
+				t.Fatalf("key = %q, want %q", key, test.wantKey)
+			}
+		})
+	}
+}
+
+func TestParseS3URIRejectsInvalidPercentEncoding(t *testing.T) {
+	for _, source := range []string{
+		"s3://checkpoint/broken%",
+		"s3://checkpoint/broken%2",
+		"s3://checkpoint/broken%GG",
+	} {
+		_, _, err := parseS3URI(source)
+		if err == nil || !strings.Contains(err.Error(), "无效的 percent 编码") {
+			t.Fatalf("parseS3URI(%q) error = %v, want invalid percent encoding", source, err)
+		}
+	}
+}
+
+func TestParseDownloadSourceKeepsDisplayTerminalSafe(t *testing.T) {
+	const source = "s3://checkpoint/folder%0A%1B%3F%23%25.txt"
+	parsed, err := parseDownloadSource(source)
+	if err != nil {
+		t.Fatalf("parse S3 source with escaped control characters: %v", err)
+	}
+	if parsed.key != "folder\n\x1b?#%.txt" {
+		t.Fatalf("decoded key = %q", parsed.key)
+	}
+	if parsed.display != source {
+		t.Fatalf("safe display = %q, want canonical URI %q", parsed.display, source)
+	}
+	if strings.ContainsAny(parsed.display, "\n\r\x1b") {
+		t.Fatalf("safe display contains terminal control characters: %q", parsed.display)
+	}
+}
+
 func TestResolveConfigCLIOverridesEnvironmentAndKeepsAWSSelection(t *testing.T) {
 	clearAWSEnvironment(t)
 	t.Setenv("AWS_ACCESS_KEY_ID", "env-ak")
@@ -397,11 +488,18 @@ func TestNewS3ClientPathStyleFalseUsesVirtualHostedStyle(t *testing.T) {
 
 func TestNewS3ClientCustomEndpointRequestsBucketInPath(t *testing.T) {
 	clearAWSEnvironment(t)
-	var requestHost string
-	var requestPath string
+	const escapedSource = "s3://checkpoint/%E7%BA%BF%E4%B8%8A%E6%9C%8D_rm42_p4.internal.example/2026-09-13_040000/master.ckp.147.gz"
+	const decodedKey = "线上服_rm42_p4.internal.example/2026-09-13_040000/master.ckp.147.gz"
+	const escapedRequestPath = "/checkpoint/%E7%BA%BF%E4%B8%8A%E6%9C%8D_rm42_p4.internal.example/2026-09-13_040000/master.ckp.147.gz"
+	var requestHosts []string
+	var requestPaths []string
 	transport := presignedRoundTripperFunc(func(request *http.Request) (*http.Response, error) {
-		requestHost = request.URL.Host
-		requestPath = request.URL.EscapedPath()
+		requestHosts = append(requestHosts, request.URL.Host)
+		requestPaths = append(requestPaths, request.URL.EscapedPath())
+		body := ""
+		if request.Method == http.MethodGet {
+			body = "x"
+		}
 		return &http.Response{
 			StatusCode: http.StatusOK,
 			Status:     "200 OK",
@@ -409,13 +507,13 @@ func TestNewS3ClientCustomEndpointRequestsBucketInPath(t *testing.T) {
 				"Content-Length": []string{"1"},
 				"ETag":           []string{`"fixture-etag"`},
 			},
-			Body:    io.NopCloser(strings.NewReader("")),
+			Body:    io.NopCloser(strings.NewReader(body)),
 			Request: request,
 		}, nil
 	})
 
 	opts := defaultCLIOptions()
-	opts.source = "s3://checkpoint/releases/object.bin"
+	opts.source = escapedSource
 	opts.endpoint = "https://objects.example.test"
 	opts.accessKey = "cli-ak"
 	opts.secretKey = "cli-sk"
@@ -424,25 +522,53 @@ func TestNewS3ClientCustomEndpointRequestsBucketInPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resolve config: %v", err)
 	}
+	if resolved.key != decodedKey {
+		t.Fatalf("resolved key = %q, want %q", resolved.key, decodedKey)
+	}
+	if resolved.sourceDisplay != escapedSource {
+		t.Fatalf("source display = %q, want canonical URI %q", resolved.sourceDisplay, escapedSource)
+	}
+	if resolved.destination != "master.ckp.147.gz" {
+		t.Fatalf("destination = %q, want decoded object filename", resolved.destination)
+	}
 	client, err := newS3Client(context.Background(), resolved)
 	if err != nil {
 		t.Fatalf("create S3 client: %v", err)
 	}
 	if _, err := client.HeadObject(context.Background(), &s3.HeadObjectInput{
-		Bucket: aws.String("checkpoint"),
-		Key:    aws.String("releases/object.bin"),
+		Bucket: aws.String(resolved.bucket),
+		Key:    aws.String(resolved.key),
 	}, func(options *s3.Options) {
 		options.HTTPClient = &http.Client{Transport: transport}
 		options.RetryMaxAttempts = 1
 	}); err != nil {
 		t.Fatalf("HEAD object through custom endpoint: %v", err)
 	}
-
-	if requestHost != "objects.example.test" {
-		t.Fatalf("request host = %q, want endpoint host", requestHost)
+	object, err := client.GetObject(context.Background(), &s3.GetObjectInput{
+		Bucket: aws.String(resolved.bucket),
+		Key:    aws.String(resolved.key),
+		Range:  aws.String("bytes=0-0"),
+	}, func(options *s3.Options) {
+		options.HTTPClient = &http.Client{Transport: transport}
+		options.RetryMaxAttempts = 1
+	})
+	if err != nil {
+		t.Fatalf("GET object through custom endpoint: %v", err)
 	}
-	if requestPath != "/checkpoint/releases/object.bin" {
-		t.Fatalf("request path = %q, want bucket and key in path", requestPath)
+	if err := object.Body.Close(); err != nil {
+		t.Fatalf("close GET object body: %v", err)
+	}
+
+	if len(requestHosts) != 2 || len(requestPaths) != 2 {
+		t.Fatalf("captured requests = hosts %v paths %v, want HEAD and GET", requestHosts, requestPaths)
+	}
+	for index := range requestPaths {
+		if requestHosts[index] != "objects.example.test" {
+			t.Fatalf("request %d host = %q, want endpoint host", index, requestHosts[index])
+		}
+		if requestPaths[index] != escapedRequestPath {
+			t.Fatalf("request %d path = %q, want %q", index, requestPaths[index], escapedRequestPath)
+		}
 	}
 }
 

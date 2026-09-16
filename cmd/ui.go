@@ -58,7 +58,7 @@ func newDownloadModel(client s3API, request downloadRequest) downloadModel {
 	bar := progress.New(
 		progress.WithWidth(56),
 		progress.WithColors(lipgloss.Color(accentColor)),
-		progress.WithFillCharacters('━', ' '),
+		progress.WithFillCharacters(progress.DefaultFullCharFullBlock, ' '),
 		progress.WithSpringOptions(20, 0.85),
 	)
 	return downloadModel{
@@ -206,9 +206,7 @@ func (m downloadModel) View() tea.View {
 	if speed > 0 {
 		builder.WriteString(fmt.Sprintf("  %s/s", formatBytes(speed)))
 	}
-	if m.done {
-		builder.WriteString(fmt.Sprintf("  耗时 %s", formatDuration(m.elapsed())))
-	} else if speed > 0 {
+	if !m.done && speed > 0 {
 		if eta := m.eta(speed); eta > 0 {
 			builder.WriteString(fmt.Sprintf("  剩余 %s", formatDuration(eta)))
 		}
@@ -216,11 +214,11 @@ func (m downloadModel) View() tea.View {
 	builder.WriteString("\n\n")
 	switch {
 	case m.err != nil && !errors.Is(m.err, context.Canceled):
-		builder.WriteString(errorStyle.Render("失败 · " + m.err.Error()))
+		builder.WriteString(errorStyle.Render(fmt.Sprintf("失败 · %s · 耗时 %s", m.err.Error(), formatDuration(m.elapsed()))))
 	case m.done && m.err == nil:
-		builder.WriteString(successStyle.Render("完成 · 文件已保存"))
+		builder.WriteString(successStyle.Render(fmt.Sprintf("完成 · 文件已保存 · 耗时 %s", formatDuration(m.elapsed()))))
 	case m.done && errors.Is(m.err, context.Canceled):
-		builder.WriteString(labelStyle.Render("已取消"))
+		builder.WriteString(labelStyle.Render(fmt.Sprintf("已取消 · 耗时 %s", formatDuration(m.elapsed()))))
 	case m.cancelling:
 		builder.WriteString(labelStyle.Render("正在取消并清理临时文件…"))
 	default:

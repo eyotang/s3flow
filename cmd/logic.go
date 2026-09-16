@@ -25,7 +25,7 @@ import (
 
 const (
 	defaultRegion      = "cn-sh"
-	defaultPartSize    = int64(16 << 20)
+	defaultPartSize    = int64(128 << 20)
 	defaultConcurrency = 16
 	maxConcurrency     = 128
 	maxDownloadParts   = int64(10_000)
@@ -192,7 +192,7 @@ func newCLIFlagSet(opts *cliOptions, output io.Writer) (*flag.FlagSet, *byteSize
 	fs.BoolVar(&opts.pathStyle, "path-style", true, "使用 path-style S3 请求；设为 false 时使用 bucket.endpoint")
 	fs.BoolVar(&opts.force, "force", false, "覆盖已有输出文件")
 	partSize := &byteSizeFlag{value: defaultPartSize}
-	fs.Var(partSize, "part-size", "分片大小 `SIZE`，例如 16MiB、1GiB")
+	fs.Var(partSize, "part-size", "分片大小 `SIZE`，例如 128MiB、1GiB")
 	fs.Usage = func() {
 		fmt.Fprintln(output, "用法:")
 		fmt.Fprintln(output, "  s3get [参数] s3://bucket/key [输出文件]")

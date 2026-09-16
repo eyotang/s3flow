@@ -67,6 +67,6 @@ func run(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "下载失败: %v\n", result.err)
 		return 1
 	}
-	fmt.Fprintf(stdout, "下载完成: %s · 耗时 %s\n", configuration.destination, formatDuration(result.elapsed()))
+	fmt.Fprintf(stdout, "下载完成: %s\n", configuration.destination)
 	return 0
 }

@@ -60,7 +60,7 @@ func TestCLIFlagDefaultsIncludeHelperText(t *testing.T) {
 		"-p NAME\n",
 		"AWS 命名 profile NAME（等同 --profile）",
 		"-part-size SIZE\n",
-		"分片大小 SIZE，例如 16MiB、1GiB (default 16.0 MiB)",
+		"分片大小 SIZE，例如 128MiB、1GiB (default 128.0 MiB)",
 		"-path-style\n",
 		"使用 path-style S3 请求；设为 false 时使用 bucket.endpoint (default true)",
 		"-profile NAME\n",
@@ -78,6 +78,13 @@ func TestCLIFlagDefaultsIncludeHelperText(t *testing.T) {
 	}
 	if strings.Contains(help, "-config ") {
 		t.Errorf("expected obsolete YAML --config flag to be removed, got:\n%s", help)
+	}
+}
+
+func TestDefaultPartSizeIs128MiB(t *testing.T) {
+	opts := defaultCLIOptions()
+	if opts.partSize != 128<<20 {
+		t.Fatalf("default part size = %d, want %d", opts.partSize, 128<<20)
 	}
 }
 

@@ -26,7 +26,7 @@ import (
 const (
 	defaultRegion      = "cn-sh"
 	defaultPartSize    = int64(16 << 20)
-	defaultConcurrency = 8
+	defaultConcurrency = 16
 	maxConcurrency     = 128
 	maxDownloadParts   = int64(10_000)
 	maxPartAttempts    = 3

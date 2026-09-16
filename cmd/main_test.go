@@ -52,7 +52,7 @@ func TestCLIFlagDefaultsIncludeHelperText(t *testing.T) {
 		"-aws DIR\n",
 		"AWS 配置目录 DIR，目录内包含 config 与 credentials（默认 ~/.aws）",
 		"-concurrency N\n",
-		"并发分片数 N，范围 1-128 (default 8)",
+		"并发分片数 N，范围 1-128 (default 16)",
 		"-endpoint URL\n",
 		"S3 endpoint URL，例如 https://s3.example.com",
 		"-o FILE\n",

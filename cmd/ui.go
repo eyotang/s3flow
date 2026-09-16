@@ -12,8 +12,13 @@ import (
 	"charm.land/lipgloss/v2"
 )
 
+const (
+	accentColor          = "#7D56F4"
+	progressSyncInterval = 100 * time.Millisecond
+)
+
 var (
-	titleStyle   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#7D56F4"))
+	titleStyle   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(accentColor))
 	labelStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("#8A8A8A"))
 	successStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#36C692"))
 	errorStyle   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#FF5F87"))
@@ -29,26 +34,29 @@ type downloadModel struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 
-	width          int
-	stage          string
-	downloaded     int64
-	total          int64
-	completedParts int
-	totalParts     int
-	startedAt      time.Time
-	done           bool
-	cancelling     bool
-	err            error
+	width                 int
+	stage                 string
+	downloaded            int64
+	total                 int64
+	completedParts        int
+	totalParts            int
+	startedAt             time.Time
+	done                  bool
+	cancelling            bool
+	err                   error
+	pendingPercent        float64
+	progressSyncScheduled bool
 }
 
 type downloadEventsClosedMsg struct{}
 type exitAfterCompletionMsg struct{}
+type syncAnimatedProgressMsg struct{}
 
 func newDownloadModel(client s3API, request downloadRequest) downloadModel {
 	ctx, cancel := context.WithCancel(context.Background())
 	bar := progress.New(
 		progress.WithWidth(56),
-		progress.WithColors(lipgloss.Color("#5A56E0"), lipgloss.Color("#35D0BA")),
+		progress.WithColors(lipgloss.Color(accentColor)),
 		progress.WithSpringOptions(20, 0.85),
 	)
 	return downloadModel{
@@ -88,6 +96,14 @@ func waitDownloadProgressCmd(events <-chan downloadProgress) tea.Cmd {
 	}
 }
 
+// syncAnimatedProgressCmd coalesces high-frequency byte updates so Bubbles
+// animation frames are not invalidated before they can be rendered.
+func syncAnimatedProgressCmd() tea.Cmd {
+	return tea.Tick(progressSyncInterval, func(time.Time) tea.Msg {
+		return syncAnimatedProgressMsg{}
+	})
+}
+
 func (m downloadModel) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	switch message := message.(type) {
 	case tea.WindowSizeMsg:
@@ -119,8 +135,10 @@ func (m downloadModel) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		if message.done && message.err == nil {
 			percent = 1
 		}
-		animation := m.progress.SetPercent(percent)
+		m.pendingPercent = percent
 		if message.done {
+			m.progressSyncScheduled = false
+			animation := m.progress.SetPercent(percent)
 			m.done = true
 			m.err = message.err
 			m.cancel()
@@ -131,7 +149,18 @@ func (m downloadModel) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				return exitAfterCompletionMsg{}
 			}))
 		}
-		return m, tea.Batch(animation, waitDownloadProgressCmd(m.events))
+		if !m.progressSyncScheduled {
+			m.progressSyncScheduled = true
+			return m, tea.Batch(syncAnimatedProgressCmd(), waitDownloadProgressCmd(m.events))
+		}
+		return m, waitDownloadProgressCmd(m.events)
+
+	case syncAnimatedProgressMsg:
+		m.progressSyncScheduled = false
+		if m.done {
+			return m, nil
+		}
+		return m, m.progress.SetPercent(m.pendingPercent)
 
 	case progress.FrameMsg:
 		var command tea.Cmd

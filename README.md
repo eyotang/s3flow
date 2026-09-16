@@ -167,7 +167,7 @@ AWS_SECRET_ACCESS_KEY=your-secret-key \
 --path-style         是否使用 path-style，默认 true；false 使用 bucket.endpoint
 -o, --output FILE    输出文件
 --part-size SIZE     分片大小，默认 16MiB
---concurrency N      并发数，默认 8，最大 128
+--concurrency N      并发数，默认 16，最大 128
 --force              覆盖已有输出文件
 ```
 

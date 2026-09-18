@@ -18,146 +18,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/eyotang/s3flow/internal/pkg"
 )
-
-func TestParseCLIReadsConnectionAndAWSFlags(t *testing.T) {
-	awsDirectory := filepath.Join(t.TempDir(), "aws")
-	opts, err := parseCLI([]string{
-		"--endpoint", "https://cli.example.test/",
-		"--ak", "cli-ak",
-		"--sk", "cli-sk",
-		"--session-token", "cli-token",
-		"--region", "cli-region",
-		"--aws", awsDirectory,
-		"--profile", "team",
-		"--part-size", "4MiB",
-		"--concurrency", "3",
-		"--path-style",
-		"--force",
-		"s3://assets/releases/archive.tar",
-		"archive.tar",
-	})
-	if err != nil {
-		t.Fatalf("parse CLI: %v", err)
-	}
-
-	if opts.endpoint != "https://cli.example.test/" {
-		t.Fatalf("expected endpoint flag, got %q", opts.endpoint)
-	}
-	if opts.accessKey != "cli-ak" || opts.secretKey != "cli-sk" || opts.sessionToken != "cli-token" {
-		t.Fatalf("expected CLI credentials, got ak=%q sk=%q token=%q", opts.accessKey, opts.secretKey, opts.sessionToken)
-	}
-	if opts.region != "cli-region" || opts.awsDirectory != awsDirectory || opts.awsProfile != "team" {
-		t.Fatalf("expected region/AWS flags, got region=%q directory=%q profile=%q", opts.region, opts.awsDirectory, opts.awsProfile)
-	}
-	if !opts.credentialsExplicit {
-		t.Fatal("expected explicit CLI credentials to be recorded")
-	}
-	if !opts.awsDirectoryExplicit || !opts.awsProfileExplicit {
-		t.Fatalf("expected explicit AWS selectors, directory=%v profile=%v", opts.awsDirectoryExplicit, opts.awsProfileExplicit)
-	}
-	if opts.source != "s3://assets/releases/archive.tar" || opts.output != "archive.tar" {
-		t.Fatalf("unexpected source/output: %q %q", opts.source, opts.output)
-	}
-	if opts.partSize != 4<<20 || opts.concurrency != 3 {
-		t.Fatalf("unexpected download settings: partSize=%d concurrency=%d", opts.partSize, opts.concurrency)
-	}
-	if !opts.pathStyle || !opts.force {
-		t.Fatalf("expected path-style and force flags to be enabled")
-	}
-
-	short, err := parseCLI([]string{"-p", "short-profile", "s3://assets/object.bin"})
-	if err != nil {
-		t.Fatalf("parse -p alias: %v", err)
-	}
-	if short.awsProfile != "short-profile" || short.awsDirectory != "" || !short.awsProfileExplicit || short.awsDirectoryExplicit {
-		t.Fatalf("-p selection = profile %q, directory %q; want profile %q with default directory", short.awsProfile, short.awsDirectory, "short-profile")
-	}
-}
-
-func TestParseCLIAllowsDisablingDefaultPathStyle(t *testing.T) {
-	opts, err := parseCLI([]string{"--path-style=false", "s3://assets/object.bin"})
-	if err != nil {
-		t.Fatalf("parse --path-style=false: %v", err)
-	}
-	if opts.pathStyle {
-		t.Fatal("expected --path-style=false to select virtual-hosted-style")
-	}
-}
-
-func TestParseS3URIDecodesEscapedObjectKey(t *testing.T) {
-	const source = "s3://checkpoint/%E7%BA%BF%E4%B8%8A%E6%9C%8D_rm42_p4.internal.example/2026-09-13_040000/master.ckp.147.gz"
-	const wantKey = "线上服_rm42_p4.internal.example/2026-09-13_040000/master.ckp.147.gz"
-
-	bucket, key, err := parseS3URI(source)
-	if err != nil {
-		t.Fatalf("parse escaped S3 URI: %v", err)
-	}
-	if bucket != "checkpoint" {
-		t.Fatalf("bucket = %q, want checkpoint", bucket)
-	}
-	if key != wantKey {
-		t.Fatalf("key = %q, want decoded key %q", key, wantKey)
-	}
-}
-
-func TestParseS3URIPathEscapingRules(t *testing.T) {
-	tests := []struct {
-		name    string
-		source  string
-		wantKey string
-	}{
-		{
-			name:    "native unicode",
-			source:  "s3://checkpoint/线上服/object.gz",
-			wantKey: "线上服/object.gz",
-		},
-		{
-			name:    "plus is not a space",
-			source:  "s3://checkpoint/folder+name/file%20name.gz",
-			wantKey: "folder+name/file name.gz",
-		},
-		{
-			name:    "escaped slash and percent",
-			source:  "s3://checkpoint/folder%2Fnested/100%25.gz",
-			wantKey: "folder/nested/100%.gz",
-		},
-		{
-			name:    "escaped percent sequence stays literal",
-			source:  "s3://checkpoint/literal%252Fname.gz",
-			wantKey: "literal%2Fname.gz",
-		},
-		{
-			name:    "escaped query and fragment characters",
-			source:  "s3://checkpoint/literal%3Fquery%23fragment.gz",
-			wantKey: "literal?query#fragment.gz",
-		},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			_, key, err := parseS3URI(test.source)
-			if err != nil {
-				t.Fatalf("parse S3 URI: %v", err)
-			}
-			if key != test.wantKey {
-				t.Fatalf("key = %q, want %q", key, test.wantKey)
-			}
-		})
-	}
-}
-
-func TestParseS3URIRejectsInvalidPercentEncoding(t *testing.T) {
-	for _, source := range []string{
-		"s3://checkpoint/broken%",
-		"s3://checkpoint/broken%2",
-		"s3://checkpoint/broken%GG",
-	} {
-		_, _, err := parseS3URI(source)
-		if err == nil || !strings.Contains(err.Error(), "无效的 percent 编码") {
-			t.Fatalf("parseS3URI(%q) error = %v, want invalid percent encoding", source, err)
-		}
-	}
-}
 
 func TestParseDownloadSourceKeepsDisplayTerminalSafe(t *testing.T) {
 	const source = "s3://checkpoint/folder%0A%1B%3F%23%25.txt"
@@ -181,34 +43,27 @@ func TestResolveConfigCLIOverridesEnvironmentAndKeepsAWSSelection(t *testing.T) 
 	t.Setenv("AWS_ACCESS_KEY_ID", "env-ak")
 	t.Setenv("AWS_SECRET_ACCESS_KEY", "env-sk")
 	t.Setenv("AWS_SESSION_TOKEN", "env-token")
-	awsDirectory := writeAWSSharedDirectory(t, "[profile team]\nregion = profile-region", "[team]\naws_access_key_id = profile-ak\naws_secret_access_key = profile-sk")
+	AWSDirectory := writeAWSSharedDirectory(t, "[profile team]\nregion = profile-Region", "[team]\naws_access_key_id = profile-ak\naws_secret_access_key = profile-sk")
 
-	resolved, err := resolveConfig(cliOptions{
-		source:              "s3://assets/releases/archive.tar",
-		output:              "download.tar",
-		credentialsExplicit: true,
-		awsDirectory:        awsDirectory,
-		awsProfile:          "team",
-		endpoint:            " https://cli.example.test/ ",
-		accessKey:           " cli-ak ",
-		secretKey:           " cli-sk ",
-		sessionToken:        " cli-token ",
-		region:              " cli-region ",
-		partSize:            defaultPartSize,
-		concurrency:         defaultConcurrency,
+	resolved, err := resolveConfig(cliOptions{Options: pkg.Options{CredentialsExplicit: true, AWSDirectory: AWSDirectory, AWSProfile: "team", Endpoint: " https://cli.example.test/ ", AccessKey: " cli-ak ", SecretKey: " cli-sk ", SessionToken: " cli-token ", Region: " cli-Region "},
+		source: "s3://assets/releases/archive.tar",
+		output: "download.tar",
+
+		partSize:    pkg.DefaultPartSize,
+		concurrency: pkg.DefaultConcurrency,
 	})
 	if err != nil {
 		t.Fatalf("resolve config: %v", err)
 	}
 
-	if resolved.accessKey != "cli-ak" || resolved.secretKey != "cli-sk" || resolved.sessionToken != "cli-token" {
-		t.Fatalf("expected CLI credentials to win, got ak=%q sk=%q token=%q", resolved.accessKey, resolved.secretKey, resolved.sessionToken)
+	if resolved.AccessKey != "cli-ak" || resolved.SecretKey != "cli-sk" || resolved.SessionToken != "cli-token" {
+		t.Fatalf("expected CLI credentials to win, got ak=%q sk=%q token=%q", resolved.AccessKey, resolved.SecretKey, resolved.SessionToken)
 	}
-	if resolved.region != "cli-region" {
-		t.Fatalf("expected CLI region to win, got %q", resolved.region)
+	if resolved.Region != "cli-Region" {
+		t.Fatalf("expected CLI Region to win, got %q", resolved.Region)
 	}
-	if resolved.endpoint != "https://cli.example.test" {
-		t.Fatalf("expected normalized CLI endpoint to win, got %q", resolved.endpoint)
+	if resolved.Endpoint != "https://cli.example.test" {
+		t.Fatalf("expected normalized CLI Endpoint to win, got %q", resolved.Endpoint)
 	}
 	if resolved.bucket != "assets" || resolved.key != "releases/archive.tar" {
 		t.Fatalf("unexpected S3 target: bucket=%q key=%q", resolved.bucket, resolved.key)
@@ -216,8 +71,8 @@ func TestResolveConfigCLIOverridesEnvironmentAndKeepsAWSSelection(t *testing.T) 
 	if resolved.destination != "download.tar" {
 		t.Fatalf("unexpected destination: %q", resolved.destination)
 	}
-	if resolved.awsDirectory != awsDirectory || resolved.awsProfile != "team" {
-		t.Fatalf("unexpected AWS selection: directory=%q profile=%q", resolved.awsDirectory, resolved.awsProfile)
+	if resolved.AWSDirectory != AWSDirectory || resolved.AWSProfile != "team" {
+		t.Fatalf("unexpected AWS selection: directory=%q profile=%q", resolved.AWSDirectory, resolved.AWSProfile)
 	}
 }
 
@@ -229,15 +84,15 @@ func TestResolveConfigEnvironmentCredentialsAreTrimmed(t *testing.T) {
 
 	resolved, err := resolveConfig(cliOptions{
 		source:      "s3://assets/releases/object.bin",
-		partSize:    defaultPartSize,
-		concurrency: defaultConcurrency,
+		partSize:    pkg.DefaultPartSize,
+		concurrency: pkg.DefaultConcurrency,
 	})
 	if err != nil {
 		t.Fatalf("resolve config: %v", err)
 	}
 
-	if resolved.accessKey != "env-ak" || resolved.secretKey != "env-sk" || resolved.sessionToken != "env-token" {
-		t.Fatalf("expected environment credentials to win, got ak=%q sk=%q token=%q", resolved.accessKey, resolved.secretKey, resolved.sessionToken)
+	if resolved.AccessKey != "env-ak" || resolved.SecretKey != "env-sk" || resolved.SessionToken != "env-token" {
+		t.Fatalf("expected environment credentials to win, got ak=%q sk=%q token=%q", resolved.AccessKey, resolved.SecretKey, resolved.SessionToken)
 	}
 	if resolved.destination != "object.bin" {
 		t.Fatalf("expected destination derived from object key, got %q", resolved.destination)
@@ -249,12 +104,11 @@ func TestResolveConfigRejectsPartialCLICredentialsInsteadOfMixingSources(t *test
 	t.Setenv("AWS_ACCESS_KEY_ID", "env-ak")
 	t.Setenv("AWS_SECRET_ACCESS_KEY", "env-sk")
 
-	_, err := resolveConfig(cliOptions{
-		source:              "s3://assets/object.bin",
-		credentialsExplicit: true,
-		accessKey:           "cli-ak",
-		partSize:            defaultPartSize,
-		concurrency:         defaultConcurrency,
+	_, err := resolveConfig(cliOptions{Options: pkg.Options{CredentialsExplicit: true, AccessKey: "cli-ak"},
+		source: "s3://assets/object.bin",
+
+		partSize:    pkg.DefaultPartSize,
+		concurrency: pkg.DefaultConcurrency,
 	})
 	if err == nil || !strings.Contains(err.Error(), "命令行 --ak 和 --sk 必须同时设置") {
 		t.Fatalf("expected partial CLI credentials error, got %v", err)
@@ -267,8 +121,8 @@ func TestResolveConfigRejectsPartialEnvironmentCredentialsInsteadOfMixingSources
 
 	_, err := resolveConfig(cliOptions{
 		source:      "s3://assets/object.bin",
-		partSize:    defaultPartSize,
-		concurrency: defaultConcurrency,
+		partSize:    pkg.DefaultPartSize,
+		concurrency: pkg.DefaultConcurrency,
 	})
 	if err == nil || !strings.Contains(err.Error(), "必须同时设置") {
 		t.Fatalf("expected partial environment credentials error, got %v", err)
@@ -282,43 +136,43 @@ func TestNewS3ClientCombinesCLIConfigWithEnvironmentCredentials(t *testing.T) {
 	t.Setenv("AWS_SESSION_TOKEN", "env-token")
 	opts := defaultCLIOptions()
 	opts.source = "s3://assets/object.bin"
-	opts.endpoint = "https://s3.example.test/"
-	opts.region = "cli-region"
+	opts.Endpoint = "https://s3.example.test/"
+	opts.Region = "cli-Region"
 
 	clientOptions := requireS3ClientOptions(t, opts)
-	requireS3ClientValues(t, clientOptions, "cli-region", "https://s3.example.test", "env-ak", "env-sk", "env-token")
+	requireS3ClientValues(t, clientOptions, "cli-Region", "https://s3.example.test", "env-ak", "env-sk", "env-token")
 	if !clientOptions.UsePathStyle {
-		t.Fatal("expected path-style to be enabled by default for a CLI endpoint")
+		t.Fatal("expected path-style to be enabled by default for a CLI Endpoint")
 	}
 }
 
 func TestNewS3ClientLoadsDefaultAWSFiles(t *testing.T) {
 	home := setTestHome(t)
 	clearAWSEnvironment(t)
-	awsDirectory := filepath.Join(home, ".aws")
-	writeAWSSharedDirectoryAt(t, awsDirectory,
-		"[default]\nregion = default-region\nendpoint_url = https://default.example.test",
+	AWSDirectory := filepath.Join(home, ".aws")
+	writeAWSSharedDirectoryAt(t, AWSDirectory,
+		"[default]\nregion = default-Region\nendpoint_url = https://default.example.test",
 		"[default]\naws_access_key_id = default-ak\naws_secret_access_key = default-sk\naws_session_token = default-token",
 	)
-	setSDKDefaultAWSFiles(t, awsDirectory)
+	setSDKDefaultAWSFiles(t, AWSDirectory)
 
 	opts := defaultCLIOptions()
 	opts.source = "s3://assets/object.bin"
 	clientOptions := requireS3ClientOptions(t, opts)
-	requireS3ClientValues(t, clientOptions, "default-region", "https://default.example.test", "default-ak", "default-sk", "default-token")
+	requireS3ClientValues(t, clientOptions, "default-Region", "https://default.example.test", "default-ak", "default-sk", "default-token")
 	if !clientOptions.UsePathStyle {
-		t.Fatal("expected path-style to be enabled by default for a shared-config endpoint")
+		t.Fatal("expected path-style to be enabled by default for a shared-config Endpoint")
 	}
 }
 
 func TestNewS3ClientLoadsNamedProfileFromCustomAWSDirectory(t *testing.T) {
 	clearAWSEnvironment(t)
-	awsDirectory := writeAWSSharedDirectory(t, `
+	AWSDirectory := writeAWSSharedDirectory(t, `
 [default]
-region = default-region
+Region = default-Region
 endpoint_url = https://default.example.test
 [profile team]
-region = team-region
+Region = team-Region
 endpoint_url = https://team.example.test
 `, `
 [default]
@@ -329,16 +183,16 @@ aws_access_key_id = team-ak
 aws_secret_access_key = team-sk
 aws_session_token = team-token
 `)
-	decoyDirectory := writeAWSSharedDirectory(t, "[profile team]\nregion = decoy-region", "[team]\naws_access_key_id = decoy-ak\naws_secret_access_key = decoy-sk")
+	decoyDirectory := writeAWSSharedDirectory(t, "[profile team]\nregion = decoy-Region", "[team]\naws_access_key_id = decoy-ak\naws_secret_access_key = decoy-sk")
 	t.Setenv("AWS_CONFIG_FILE", filepath.Join(decoyDirectory, "config"))
 	t.Setenv("AWS_SHARED_CREDENTIALS_FILE", filepath.Join(decoyDirectory, "credentials"))
 
 	opts := defaultCLIOptions()
 	opts.source = "s3://assets/object.bin"
-	opts.awsDirectory = awsDirectory
-	opts.awsProfile = "team"
+	opts.AWSDirectory = AWSDirectory
+	opts.AWSProfile = "team"
 	clientOptions := requireS3ClientOptions(t, opts)
-	requireS3ClientValues(t, clientOptions, "team-region", "https://team.example.test", "team-ak", "team-sk", "team-token")
+	requireS3ClientValues(t, clientOptions, "team-Region", "https://team.example.test", "team-ak", "team-sk", "team-token")
 }
 
 func TestNewS3ClientHonorsAWSProfileWithoutProfileFlag(t *testing.T) {
@@ -346,9 +200,9 @@ func TestNewS3ClientHonorsAWSProfileWithoutProfileFlag(t *testing.T) {
 	clearAWSEnvironment(t)
 	writeAWSSharedDirectoryAt(t, filepath.Join(home, ".aws"), `
 [default]
-region = default-region
+Region = default-Region
 [profile environment]
-region = environment-region
+Region = environment-Region
 `, `
 [default]
 aws_access_key_id = default-ak
@@ -363,16 +217,16 @@ aws_secret_access_key = environment-sk
 	opts := defaultCLIOptions()
 	opts.source = "s3://assets/object.bin"
 	clientOptions := requireS3ClientOptions(t, opts)
-	requireS3ClientValues(t, clientOptions, "environment-region", "", "environment-ak", "environment-sk", "")
+	requireS3ClientValues(t, clientOptions, "environment-Region", "", "environment-ak", "environment-sk", "")
 }
 
 func TestNewS3ClientProfileFlagOverridesAWSProfile(t *testing.T) {
 	clearAWSEnvironment(t)
-	awsDirectory := writeAWSSharedDirectory(t, `
+	AWSDirectory := writeAWSSharedDirectory(t, `
 [profile environment]
-region = environment-region
+Region = environment-Region
 [profile command]
-region = command-region
+Region = command-Region
 `, `
 [environment]
 aws_access_key_id = environment-ak
@@ -385,63 +239,63 @@ aws_secret_access_key = command-sk
 
 	opts := defaultCLIOptions()
 	opts.source = "s3://assets/object.bin"
-	opts.awsDirectory = awsDirectory
-	opts.awsProfile = "command"
+	opts.AWSDirectory = AWSDirectory
+	opts.AWSProfile = "command"
 	clientOptions := requireS3ClientOptions(t, opts)
-	requireS3ClientValues(t, clientOptions, "command-region", "", "command-ak", "command-sk", "")
+	requireS3ClientValues(t, clientOptions, "command-Region", "", "command-ak", "command-sk", "")
 }
 
 func TestNewS3ClientCLIOverridesEnvironmentAndSharedFiles(t *testing.T) {
 	clearAWSEnvironment(t)
-	awsDirectory := writeAWSSharedDirectory(t,
-		"[default]\nregion = file-region\nendpoint_url = https://file.example.test",
+	AWSDirectory := writeAWSSharedDirectory(t,
+		"[default]\nregion = file-Region\nendpoint_url = https://file.example.test",
 		"[default]\naws_access_key_id = file-ak\naws_secret_access_key = file-sk\naws_session_token = file-token",
 	)
 	t.Setenv("AWS_ACCESS_KEY_ID", "env-ak")
 	t.Setenv("AWS_SECRET_ACCESS_KEY", "env-sk")
 	t.Setenv("AWS_SESSION_TOKEN", "env-token")
-	t.Setenv("AWS_REGION", "env-region")
+	t.Setenv("AWS_REGION", "env-Region")
 	t.Setenv("AWS_ENDPOINT_URL", "https://env.example.test")
 
 	opts := defaultCLIOptions()
 	opts.source = "s3://assets/object.bin"
-	opts.awsDirectory = awsDirectory
-	opts.endpoint = "https://cli.example.test/"
-	opts.region = "cli-region"
-	opts.accessKey = "cli-ak"
-	opts.secretKey = "cli-sk"
-	opts.sessionToken = "cli-token"
-	opts.credentialsExplicit = true
+	opts.AWSDirectory = AWSDirectory
+	opts.Endpoint = "https://cli.example.test/"
+	opts.Region = "cli-Region"
+	opts.AccessKey = "cli-ak"
+	opts.SecretKey = "cli-sk"
+	opts.SessionToken = "cli-token"
+	opts.CredentialsExplicit = true
 	clientOptions := requireS3ClientOptions(t, opts)
-	requireS3ClientValues(t, clientOptions, "cli-region", "https://cli.example.test", "cli-ak", "cli-sk", "cli-token")
+	requireS3ClientValues(t, clientOptions, "cli-Region", "https://cli.example.test", "cli-ak", "cli-sk", "cli-token")
 }
 
 func TestNewS3ClientEnvironmentOverridesSharedFiles(t *testing.T) {
 	clearAWSEnvironment(t)
-	awsDirectory := writeAWSSharedDirectory(t,
-		"[default]\nregion = file-region\nendpoint_url = https://file.example.test",
+	AWSDirectory := writeAWSSharedDirectory(t,
+		"[default]\nregion = file-Region\nendpoint_url = https://file.example.test",
 		"[default]\naws_access_key_id = file-ak\naws_secret_access_key = file-sk\naws_session_token = file-token",
 	)
 	t.Setenv("AWS_ACCESS_KEY_ID", "env-ak")
 	t.Setenv("AWS_SECRET_ACCESS_KEY", "env-sk")
 	t.Setenv("AWS_SESSION_TOKEN", "env-token")
-	t.Setenv("AWS_REGION", "env-region")
+	t.Setenv("AWS_REGION", "env-Region")
 	t.Setenv("AWS_ENDPOINT_URL", "https://env.example.test")
 
 	opts := defaultCLIOptions()
 	opts.source = "s3://assets/object.bin"
-	opts.awsDirectory = awsDirectory
+	opts.AWSDirectory = AWSDirectory
 	clientOptions := requireS3ClientOptions(t, opts)
-	requireS3ClientValues(t, clientOptions, "env-region", "https://env.example.test", "env-ak", "env-sk", "env-token")
+	requireS3ClientValues(t, clientOptions, "env-Region", "https://env.example.test", "env-ak", "env-sk", "env-token")
 	if !clientOptions.UsePathStyle {
-		t.Fatal("expected path-style to be enabled by default for an environment endpoint")
+		t.Fatal("expected path-style to be enabled by default for an environment Endpoint")
 	}
 }
 
 func TestNewS3ClientExplicitProfileOverridesEnvironmentCredentials(t *testing.T) {
 	clearAWSEnvironment(t)
-	awsDirectory := writeAWSSharedDirectory(t,
-		"[profile team]\nregion = team-region",
+	AWSDirectory := writeAWSSharedDirectory(t,
+		"[profile team]\nregion = team-Region",
 		"[team]\naws_access_key_id = team-ak\naws_secret_access_key = team-sk\naws_session_token = team-token",
 	)
 	t.Setenv("AWS_ACCESS_KEY_ID", "env-ak")
@@ -450,21 +304,21 @@ func TestNewS3ClientExplicitProfileOverridesEnvironmentCredentials(t *testing.T)
 
 	opts := defaultCLIOptions()
 	opts.source = "s3://assets/object.bin"
-	opts.awsDirectory = awsDirectory
-	opts.awsProfile = "team"
+	opts.AWSDirectory = AWSDirectory
+	opts.AWSProfile = "team"
 	clientOptions := requireS3ClientOptions(t, opts)
-	requireS3ClientValues(t, clientOptions, "team-region", "", "team-ak", "team-sk", "team-token")
+	requireS3ClientValues(t, clientOptions, "team-Region", "", "team-ak", "team-sk", "team-token")
 }
 
 func TestNewS3ClientDefaultsRegionToCNSh(t *testing.T) {
 	clearAWSEnvironment(t)
-	awsDirectory := writeAWSSharedDirectory(t, "", "[default]\naws_access_key_id = file-ak\naws_secret_access_key = file-sk")
+	AWSDirectory := writeAWSSharedDirectory(t, "", "[default]\naws_access_key_id = file-ak\naws_secret_access_key = file-sk")
 
 	opts := defaultCLIOptions()
 	opts.source = "s3://assets/object.bin"
-	opts.awsDirectory = awsDirectory
+	opts.AWSDirectory = AWSDirectory
 	clientOptions := requireS3ClientOptions(t, opts)
-	requireS3ClientValues(t, clientOptions, defaultRegion, "", "file-ak", "file-sk", "")
+	requireS3ClientValues(t, clientOptions, pkg.DefaultRegion, "", "file-ak", "file-sk", "")
 	if !clientOptions.UsePathStyle {
 		t.Fatal("expected path-style to be enabled by default")
 	}
@@ -474,11 +328,11 @@ func TestNewS3ClientPathStyleFalseUsesVirtualHostedStyle(t *testing.T) {
 	clearAWSEnvironment(t)
 	opts := defaultCLIOptions()
 	opts.source = "s3://assets/object.bin"
-	opts.endpoint = "https://s3.example.test"
-	opts.accessKey = "cli-ak"
-	opts.secretKey = "cli-sk"
-	opts.credentialsExplicit = true
-	opts.pathStyle = false
+	opts.Endpoint = "https://s3.example.test"
+	opts.AccessKey = "cli-ak"
+	opts.SecretKey = "cli-sk"
+	opts.CredentialsExplicit = true
+	opts.PathStyle = false
 
 	clientOptions := requireS3ClientOptions(t, opts)
 	if clientOptions.UsePathStyle {
@@ -514,10 +368,10 @@ func TestNewS3ClientCustomEndpointRequestsBucketInPath(t *testing.T) {
 
 	opts := defaultCLIOptions()
 	opts.source = escapedSource
-	opts.endpoint = "https://objects.example.test"
-	opts.accessKey = "cli-ak"
-	opts.secretKey = "cli-sk"
-	opts.credentialsExplicit = true
+	opts.Endpoint = "https://objects.example.test"
+	opts.AccessKey = "cli-ak"
+	opts.SecretKey = "cli-sk"
+	opts.CredentialsExplicit = true
 	resolved, err := resolveConfig(opts)
 	if err != nil {
 		t.Fatalf("resolve config: %v", err)
@@ -531,7 +385,7 @@ func TestNewS3ClientCustomEndpointRequestsBucketInPath(t *testing.T) {
 	if resolved.destination != "master.ckp.147.gz" {
 		t.Fatalf("destination = %q, want decoded object filename", resolved.destination)
 	}
-	client, err := newS3Client(context.Background(), resolved)
+	client, err := pkg.NewS3Client(context.Background(), resolved.Config)
 	if err != nil {
 		t.Fatalf("create S3 client: %v", err)
 	}
@@ -542,7 +396,7 @@ func TestNewS3ClientCustomEndpointRequestsBucketInPath(t *testing.T) {
 		options.HTTPClient = &http.Client{Transport: transport}
 		options.RetryMaxAttempts = 1
 	}); err != nil {
-		t.Fatalf("HEAD object through custom endpoint: %v", err)
+		t.Fatalf("HEAD object through custom Endpoint: %v", err)
 	}
 	object, err := client.GetObject(context.Background(), &s3.GetObjectInput{
 		Bucket: aws.String(resolved.bucket),
@@ -553,7 +407,7 @@ func TestNewS3ClientCustomEndpointRequestsBucketInPath(t *testing.T) {
 		options.RetryMaxAttempts = 1
 	})
 	if err != nil {
-		t.Fatalf("GET object through custom endpoint: %v", err)
+		t.Fatalf("GET object through custom Endpoint: %v", err)
 	}
 	if err := object.Body.Close(); err != nil {
 		t.Fatalf("close GET object body: %v", err)
@@ -564,7 +418,7 @@ func TestNewS3ClientCustomEndpointRequestsBucketInPath(t *testing.T) {
 	}
 	for index := range requestPaths {
 		if requestHosts[index] != "objects.example.test" {
-			t.Fatalf("request %d host = %q, want endpoint host", index, requestHosts[index])
+			t.Fatalf("request %d host = %q, want Endpoint host", index, requestHosts[index])
 		}
 		if requestPaths[index] != escapedRequestPath {
 			t.Fatalf("request %d path = %q, want %q", index, requestPaths[index], escapedRequestPath)
@@ -576,9 +430,9 @@ func TestResolveAWSDirectoryValidationAndTildeExpansion(t *testing.T) {
 	home := setTestHome(t)
 	clearAWSEnvironment(t)
 	validDirectory := filepath.Join(home, "custom-aws")
-	writeAWSSharedDirectoryAt(t, validDirectory, "[default]\nregion = test-region", "")
+	writeAWSSharedDirectoryAt(t, validDirectory, "[default]\nregion = test-Region", "")
 
-	resolved, err := resolveAWSDirectory("~/custom-aws")
+	resolved, err := pkg.ResolveAWSDirectory("~/custom-aws")
 	if err != nil {
 		t.Fatalf("resolve tilde AWS directory: %v", err)
 	}
@@ -610,9 +464,9 @@ func TestResolveAWSDirectoryValidationAndTildeExpansion(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			_, err := resolveAWSDirectory(test.path)
+			_, err := pkg.ResolveAWSDirectory(test.path)
 			if err == nil || !strings.Contains(err.Error(), test.want) {
-				t.Fatalf("resolveAWSDirectory(%q) error = %v, want substring %q", test.path, err, test.want)
+				t.Fatalf("pkg.ResolveAWSDirectory(%q) error = %v, want substring %q", test.path, err, test.want)
 			}
 		})
 	}
@@ -623,80 +477,11 @@ func TestResolveConfigRejectsMissingExplicitAWSDirectory(t *testing.T) {
 	missing := filepath.Join(t.TempDir(), "missing")
 	opts := defaultCLIOptions()
 	opts.source = "s3://assets/object.bin"
-	opts.awsDirectory = missing
+	opts.AWSDirectory = missing
 
 	_, err := resolveConfig(opts)
 	if err == nil || !errors.Is(err, os.ErrNotExist) || !strings.Contains(err.Error(), missing) {
 		t.Fatalf("expected missing AWS directory error for %q, got %v", missing, err)
-	}
-}
-
-func TestPlanPartsBoundaries(t *testing.T) {
-	tests := []struct {
-		name     string
-		size     int64
-		partSize int64
-		want     []byteRange
-	}{
-		{name: "empty object", size: 0, partSize: 4, want: nil},
-		{name: "single byte", size: 1, partSize: 4, want: []byteRange{{index: 0, start: 0, end: 0}}},
-		{name: "smaller than one part", size: 3, partSize: 4, want: []byteRange{{index: 0, start: 0, end: 2}}},
-		{name: "exact multiple", size: 8, partSize: 4, want: []byteRange{
-			{index: 0, start: 0, end: 3},
-			{index: 1, start: 4, end: 7},
-		}},
-		{name: "final partial part", size: 10, partSize: 4, want: []byteRange{
-			{index: 0, start: 0, end: 3},
-			{index: 1, start: 4, end: 7},
-			{index: 2, start: 8, end: 9},
-		}},
-	}
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			got, err := planParts(test.size, test.partSize)
-			if err != nil {
-				t.Fatalf("plan parts: %v", err)
-			}
-			if !reflect.DeepEqual(got, test.want) {
-				t.Fatalf("unexpected plan:\n got: %#v\nwant: %#v", got, test.want)
-			}
-		})
-	}
-}
-
-func TestPlanPartsLimitsCountAndAvoidsInt64Overflow(t *testing.T) {
-	parts, err := planParts(maxDownloadParts+1, 1)
-	if err != nil {
-		t.Fatalf("plan capped parts: %v", err)
-	}
-	if len(parts) > int(maxDownloadParts) {
-		t.Fatalf("expected at most %d parts, got %d", maxDownloadParts, len(parts))
-	}
-	if len(parts) != 5001 || parts[0] != (byteRange{index: 0, start: 0, end: 1}) {
-		t.Fatalf("unexpected automatically enlarged part plan: first=%#v count=%d", parts[0], len(parts))
-	}
-	if last := parts[len(parts)-1]; last.end != maxDownloadParts {
-		t.Fatalf("expected final byte %d to be covered, got last part %#v", maxDownloadParts, last)
-	}
-
-	const maxInt64 int64 = 1<<63 - 1
-	parts, err = planParts(maxInt64, maxInt64)
-	if err != nil {
-		t.Fatalf("plan MaxInt64 object: %v", err)
-	}
-	want := []byteRange{{index: 0, start: 0, end: maxInt64 - 1}}
-	if !reflect.DeepEqual(parts, want) {
-		t.Fatalf("unexpected MaxInt64 plan: got %#v want %#v", parts, want)
-	}
-}
-
-func TestPlanPartsRejectsInvalidSizes(t *testing.T) {
-	if _, err := planParts(-1, 4); err == nil {
-		t.Fatal("expected negative object size to fail")
-	}
-	if _, err := planParts(1, 0); err == nil {
-		t.Fatal("expected zero part size to fail")
 	}
 }
 
@@ -871,7 +656,7 @@ func TestDownloadObjectCancellationDoesNotCommit(t *testing.T) {
 }
 
 func TestValidateContentRangeStrictly(t *testing.T) {
-	part := byteRange{start: 4, end: 7}
+	part := pkg.Part{Start: 4, End: 7}
 	valid := "bytes 4-7/10"
 	if err := validateContentRange(&valid, part, 10); err != nil {
 		t.Fatalf("valid Content-Range rejected: %v", err)
@@ -969,13 +754,9 @@ func requireS3ClientOptions(t *testing.T, opts cliOptions) s3.Options {
 	if err != nil {
 		t.Fatalf("resolve config: %v", err)
 	}
-	clientAPI, err := newS3Client(context.Background(), resolved)
+	client, err := pkg.NewS3Client(context.Background(), resolved.Config)
 	if err != nil {
 		t.Fatalf("create S3 client: %v", err)
-	}
-	client, ok := clientAPI.(*s3.Client)
-	if !ok {
-		t.Fatalf("expected *s3.Client, got %T", clientAPI)
 	}
 	return client.Options()
 }
@@ -987,10 +768,10 @@ func requireS3ClientValues(
 ) {
 	t.Helper()
 	if options.Region != wantRegion {
-		t.Fatalf("client region = %q, want %q", options.Region, wantRegion)
+		t.Fatalf("client Region = %q, want %q", options.Region, wantRegion)
 	}
-	if endpoint := aws.ToString(options.BaseEndpoint); endpoint != wantEndpoint {
-		t.Fatalf("client endpoint = %q, want %q", endpoint, wantEndpoint)
+	if Endpoint := aws.ToString(options.BaseEndpoint); Endpoint != wantEndpoint {
+		t.Fatalf("client Endpoint = %q, want %q", Endpoint, wantEndpoint)
 	}
 	credentials, err := options.Credentials.Retrieve(context.Background())
 	if err != nil {

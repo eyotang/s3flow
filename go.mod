@@ -1,4 +1,4 @@
-module github.com/eyotang/s3get
+module github.com/eyotang/s3flow
 
 go 1.25.0
 

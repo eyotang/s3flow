@@ -1,7 +1,7 @@
-BINARY ?= bin/s3get
+BIN_DIR ?= bin
 LDFLAGS ?= -w -s
 
-all: clean test build
+all: test build
 
 test:
 	go test ./...
@@ -12,11 +12,13 @@ tidy:
 lint:
 	golangci-lint run ./...
 
-build:
-	mkdir -p $(dir $(BINARY))
-	go build -ldflags="$(LDFLAGS)" -trimpath -o $(BINARY) ./cmd
+build: s3get s3push
+
+s3get s3push:
+	mkdir -p $(BIN_DIR)
+	go build -ldflags="$(LDFLAGS)" -trimpath -o $(BIN_DIR)/$@ ./cmd/$@
 
 clean:
 	rm -rf bin dist
 
-.PHONY: all test tidy lint build clean
+.PHONY: all test tidy lint build s3get s3push clean

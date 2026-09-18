@@ -11,9 +11,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
-func main() {
-	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
-}
+func main() { os.Exit(run(os.Args[1:], os.Stdout, os.Stderr)) }
 
 func run(args []string, stdout, stderr io.Writer) int {
 	options, err := parseCLI(args)
@@ -44,6 +42,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		partSize:      configuration.partSize,
 		concurrency:   configuration.concurrency,
 		force:         configuration.force,
+		recursive:     configuration.recursive,
 	}
 	model := newDownloadModel(client, request)
 	defer model.cancel()

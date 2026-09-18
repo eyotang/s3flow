@@ -3,6 +3,7 @@
 #
 # Binaries for programs and plugins
 /s3get
+/s3push
 /bin/
 *.exe
 *.exe~
@@ -28,6 +29,7 @@ go.work.sum
 
 # env file
 .env
+.aws*
 
 # Editor/IDE
 # .idea/

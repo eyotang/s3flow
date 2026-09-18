@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/eyotang/s3flow/internal/pkg"
 )
 
 func TestPresignedURLHeadObjectProbesWithRangeAndPreservesRawQuery(t *testing.T) {
@@ -189,8 +190,8 @@ func TestResolveConfigPresignedURLDerivesSafeOutputName(t *testing.T) {
 
 	resolved, err := resolveConfig(cliOptions{
 		source:      rawURL,
-		partSize:    defaultPartSize,
-		concurrency: defaultConcurrency,
+		partSize:    pkg.DefaultPartSize,
+		concurrency: pkg.DefaultConcurrency,
 	})
 	if err != nil {
 		t.Fatalf("resolve presigned URL without credentials: %v", err)

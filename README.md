@@ -1,4 +1,6 @@
-# s3get
+# s3flow
+
+`s3flow` 包含两个独立命令：`s3get` 用于下载，`s3push` 用于上传文件或目录，共用 AWS 配置。
 
 `s3get` 是一个基于 Bubble Tea 的 S3 并发分片下载工具。S3 URI 模式通过 `HeadObject` 获取对象大小，预签名 URL 模式通过 `GET bytes=0-0` 探测大小，随后自动规划 Range 分片并发下载；界面使用 Bubbles Animated Progress 展示实时进度、速度、剩余时间和最终耗时。
 
@@ -7,10 +9,11 @@
 ## 构建
 
 ```bash
-go build -o s3get ./cmd
+go build -o s3get ./cmd/s3get
+go build -o s3push ./cmd/s3push
 ```
 
-也可以使用 Makefile，产物位于 `bin/s3get`：
+也可以使用 Makefile，产物位于 `bin/s3get` 和 `bin/s3push`：
 
 ```bash
 make build
@@ -141,6 +144,18 @@ AWS_SECRET_ACCESS_KEY=your-secret-key \
   -o ./downloads/object.bin s3://my-bucket/path/to/object.bin
 ```
 
+## 下载目录
+
+```bash
+./s3get -p production s3://my-bucket/backups/ ./backups
+./s3get --recursive s3://my-bucket/backups ./backups
+./s3get s3://my-bucket/ ./bucket-copy
+```
+
+以 `/` 结尾的 S3 地址或仅指定 bucket 时按目录下载；也可用 `--recursive` / `-r` 明确指定。不带 `/` 时优先读取同名文件；仅当 `HeadObject` 返回 404，才用 `ListObjectsV2(Prefix=key+"/", MaxKeys=1)` 探测目录，找到对象后自动切换为目录下载。文件与同名目录同时存在时优先下载文件。403、连接失败等错误不会触发目录探测；探测失败会明确报告，文件和目录都不存在则报错。目录内容保留相对路径，例如 `backups/a/b.txt` 保存为 `./backups/a/b.txt`。未指定输出目录时使用前缀末级名称，bucket 根目录使用 bucket 名称。目录列举支持分页，需要 `ListBucket` 权限；预签名 GET URL 仅支持单对象下载。
+
+目录内文件依次下载，每个文件的分片并行。界面显示整体和当前文件进度条、文件数量及分片汇总，不逐条展示分片。零字节目录标记跳过；不安全的相对路径或文件/目录冲突会报错。下载文件通过受限目录句柄写入，不能通过对象路径或符号链接逃逸输出目录。已有文件仍需 `--force` 才覆盖；失败时保留之前完成的文件并清理当前临时文件。
+
 ## 预签名 URL
 
 可以把带 endpoint 和签名查询参数的 GET URL 直接作为下载源。查询参数应使用引号保护，避免 shell 把 `&` 解释为控制符：
@@ -175,8 +190,26 @@ AWS_SECRET_ACCESS_KEY=your-secret-key \
 
 默认模式会用同目录 hard link 提交文件，以保证不覆盖下载期间新建的同名文件。若目标文件系统不支持 hard link，工具会安全退出；确认目标路径允许覆盖后，可用 `--force` 通过 rename 提交。
 
+## 上传文件或目录
+
+```bash
+./s3push --help
+./s3push -p production ./archive.tar.zst s3://my-bucket/backups/archive.tar.zst
+./s3push --concurrency 16 --part-size 128MiB ./data s3://my-bucket/backups/
+```
+
+文件目标以 `/` 结尾（或仅指定 bucket）时，自动追加本地文件名；否则使用指定的完整 key。目录上传其内容并保留相对路径，例如 `data/a/b.txt` 上传到 `backups/a/b.txt`，不包含顶层 `data`。本地目录为空或仅含空子目录时，在连接 S3 前报错退出；`--force` 不跳过此检查。零字节文件仍可上传。符号链接和特殊文件会在上传前报错。
+
+小文件和空文件使用 `PutObject`，超过分片大小的文件使用并行 multipart upload。目录中的文件依次上传，每个大文件内部并行；分片默认 128MiB，允许 5MiB–5GiB，并发默认 16、最大 128。请求重试由 AWS SDK 处理。
+
+默认在写入任何文件之前检查目标目录前缀，存在任何文件（包括不同名或子目录中的文件）都会拒绝上传，需显式指定 `--force` 强推；仅有零字节目录标记视为空目录。单文件上传检查目标 key 所在的父前缀，上传至 bucket 根目录则检查整个 bucket。检查需要 `ListBucket` 权限，检查失败会停止上传。写入时仍通过 `If-None-Match: *` 保护同名对象；`--force` 跳过空目录检查并允许覆盖同名对象，不删除其他对象。前缀检查不是目录锁，检查后其他客户端仍可能写入。S3 兼容服务需要支持条件写入，不支持时请求可能失败。失败或 Ctrl+C 取消时会尝试清理未完成的 multipart upload，清理失败会报告 upload ID；已上传成功的文件保留，目录上传不是原子操作。上传期间请保持源文件不变。
+
+上传使用与下载一致的紫色 Bubble Tea 动态进度界面，显示当前文件、目标、已完成/总文件数、当前文件分片数、整体字节进度、平均速度和预计剩余时间，结束时显示耗时。界面以整体和当前文件两条进度条为主，未完成部分显示可见轨道，分片仅显示汇总，不逐条铺满屏幕。按 `q`、`esc` 或 `Ctrl+C` 取消并等待未完成分片清理。字节进度按请求体读取量估算，SDK 重试回卷时会回退，完成状态以服务端成功响应为准。上传支持上述 AWS 连接和认证参数，不支持下载专用的 `--output` 或预签名 GET URL。
+
 ## 代码结构
 
-- `cmd/main.go`：CLI 入口、依赖装配和退出码。
-- `cmd/logic.go`：参数与 AWS shared config、S3/预签名 URL 客户端、分片规划、并发 Range 下载和文件提交。
-- `cmd/ui.go`：Bubble Tea model、消息循环和 Animated Progress 渲染。
+- `cmd/s3get/`：下载命令的入口、参数处理、下载逻辑、Bubble Tea 界面和测试。
+- `cmd/s3push/`：上传命令的入口、参数处理、目录遍历、分片上传、Bubble Tea 界面和测试。
+- `internal/pkg/`：两个命令共用的 AWS 配置、连接参数、S3 客户端、URI 解析、字节大小和分片规划。
+
+两个命令使用一致的文件职责：`main.go` 负责入口、执行流程和退出码，`cli.go` 负责参数、帮助和配置解析，`logic.go` 负责传输逻辑；对应测试放在同名 `_test.go` 中。两个命令均使用各自的 `ui.go` 展示动态进度。

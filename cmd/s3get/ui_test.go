@@ -151,7 +151,7 @@ func TestCompletedViewShowsElapsedInTerminalState(t *testing.T) {
 func TestProgressUsesFullHeightContinuousCharacters(t *testing.T) {
 	model := newDownloadModel(nil, downloadRequest{})
 	defer model.cancel()
-	if model.progress.Full != progress.DefaultFullCharFullBlock || model.progress.Empty != ' ' {
+	if model.progress.Full != progress.DefaultFullCharFullBlock || model.progress.Empty != '█' {
 		t.Fatalf("progress characters = %q/%q, want full-height blocks with blank remainder", model.progress.Full, model.progress.Empty)
 	}
 	if model.progress.FullColor != lipgloss.Color(accentColor) {
@@ -246,5 +246,24 @@ func TestFailedViewsShowElapsedTime(t *testing.T) {
 				t.Fatalf("failed terminal view did not freeze elapsed time:\n%s", view)
 			}
 		})
+	}
+}
+
+func TestProgressTrackVisibleAndCompact(t *testing.T) {
+	model := newDownloadModel(nil, downloadRequest{concurrency: 16})
+	defer model.cancel()
+	var parts []partProgress
+	for i := 1; i <= 16; i++ {
+		parts = append(parts, partProgress{number: i, total: 128 << 20})
+	}
+	updated, _ := model.Update(downloadProgress{currentFile: "large.bin", total: 3 << 40, fileTotal: 128 << 20, fileTransferred: 64 << 20, parts: parts})
+	view := updated.(downloadModel).View().Content
+	for _, want := range []string{"█", "整体进度", "当前文件", "50%"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("missing %q: %s", want, view)
+		}
+	}
+	if strings.Contains(view, "分片 1 ") || strings.Count(view, "\n") > 23 {
+		t.Fatalf("view flooded by part details: %s", view)
 	}
 }

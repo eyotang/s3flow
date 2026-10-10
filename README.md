@@ -10,8 +10,6 @@
 
 ### npm 一键安装
 
-安装体验参考 [lark-cli](https://github.com/larksuite/cli) 的 `npx @larksuite/cli@latest install`：执行一次安装命令，之后直接使用两个工具。
-
 需要 Node.js 18 或更高版本（含 npm/npx），无需 Go 或 GitHub 账号。
 
 ```bash

@@ -66,6 +66,22 @@ try {
     assert.notEqual(invalid.status, 0, 'Native failures must propagate through npx');
     assert.match(invalid.stdout + invalid.stderr, /not-a-real-option/);
   }
+  const prefix = path.join(temp, 'global install');
+  const installed = npmExec(['s3flow', 'install', '--prefix', prefix]);
+  assert.equal(installed.status, 0, installed.stdout + installed.stderr);
+  // The installed package must survive deletion of the npx cache and source.
+  fs.rmSync(path.join(temp, 'cache'), { recursive: true, force: true });
+  const packageName = require('../package.json').name;
+  const globalRoot = process.platform === 'win32' ? path.join(prefix, 'node_modules') : path.join(prefix, 'lib', 'node_modules');
+  const installedRoot = path.join(globalRoot, packageName);
+  assert.equal(fs.lstatSync(installedRoot).isSymbolicLink(), false);
+  for (const command of ['s3get', 's3push']) {
+    const shim = process.platform === 'win32' ? path.join(prefix, `${command}.cmd`) : path.join(prefix, 'bin', command);
+    assert.ok(fs.existsSync(shim), `Missing global command: ${shim}`);
+    const result = execute(process.execPath, [path.join(installedRoot, 'npm', `${command}.cjs`), '--help'], { cwd: temp });
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout + result.stderr, /-concurrency N/);
+  }
   console.log(`npm package smoke tests passed on ${process.platform}/${process.arch}`);
 } finally {
   fs.rmSync(temp, { recursive: true, force: true });

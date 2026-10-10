@@ -8,6 +8,24 @@
 
 ## 安装与运行（优先使用 npx）
 
+### npm 一键安装
+
+安装体验参考 [lark-cli](https://github.com/larksuite/cli) 的 `npx @larksuite/cli@latest install`：执行一次安装命令，之后直接使用两个工具。
+
+> npm 短命令将在首次 npm 发布完成后可用；当前可用版本仍为下方 GitHub Release 方式。发布包名以实际 npm 发布结果为准。
+
+```bash
+npx s3flow@latest install
+s3get --help
+s3push --help
+```
+
+安装器使用 npm 的全局安装目录，同时安装两个命令。可指定可写目录：`npx s3flow@latest install --prefix <目录>`，并将输出提示中的命令目录加入 `PATH`。全局安装只保留当前平台的二进制，不依赖 npx 缓存；同一条安装命令可用于升级。已有 AWS 配置继续使用，不需要在安装时填写凭据。
+
+临时使用而不进行全局安装：`npx s3flow@latest s3get --help` 或 `npx s3flow@latest s3push --help`。公开 npm 包内置二进制，不要求使用者访问私有 GitHub 仓库。
+
+### GitHub Release 安装（当前可用）
+
 需要 Node.js 18 或更高版本（含 npm/npx）。本仓库为私有仓库，先使用有仓库访问权限的 GitHub 账号登录 GitHub CLI（首次使用执行 `gh auth login`），下载安装包后用 npx 运行：
 
 ```bash
@@ -28,7 +46,7 @@ s3get --help
 s3push --help
 ```
 
-目前通过 GitHub Release 分发 npm 格式的安装包，无需 npm 账号；不依赖 npm registry 中的同名包。npx 的包执行及缓存行为见 [npm 官方文档](https://docs.npmjs.com/cli/v11/commands/npx/)。
+GitHub Release 方式无需 npm 账号，不依赖 npm registry 中的同名包。npx 的包执行及缓存行为见 [npm 官方文档](https://docs.npmjs.com/cli/v11/commands/npx/)。
 
 ### 可选：直接下载二进制
 

@@ -6,6 +6,9 @@
 /s3push
 /bin/
 /dist/
+/node_modules/
+/npm/native/
+*.tgz
 *.exe
 *.exe~
 *.dll

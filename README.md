@@ -6,7 +6,28 @@
 
 下载内容先写入目标目录中的临时文件。所有分片完成并同步到磁盘后才提交为最终文件；失败或取消时会清理临时文件。每个分片最多尝试 3 次，请求通过 ETag `If-Match` 固定对象版本，并校验每片响应的 ETag。若服务端未提供强 ETag，工具会自动降为单 Range 请求，避免并发拼接到不同版本的内容。
 
-## 下载二进制版本
+## 安装与运行（优先使用 npx）
+
+已安装 Node.js 18 或更高版本（含 npm/npx）时，推荐直接运行：
+
+```bash
+npx --yes https://github.com/eyotang/s3flow/releases/download/v0.1.1/s3flow-0.1.1.tgz s3get --help
+npx --yes https://github.com/eyotang/s3flow/releases/download/v0.1.1/s3flow-0.1.1.tgz s3push --help
+```
+
+把 `--help` 替换成下文对应命令的参数即可下载或上传。npx 会自动将包安装到 npm 缓存，并选择当前系统的二进制；Windows、macOS、Linux 的 x86_64 和 ARM64 使用相同命令。包中包含两个工具的全部平台二进制，首次下载体积较大，但无需 Go、编译器或安装脚本。再次运行可复用缓存。
+
+也可以一次安装，之后直接使用 `s3get` 和 `s3push`：
+
+```bash
+npm install --global https://github.com/eyotang/s3flow/releases/download/v0.1.1/s3flow-0.1.1.tgz
+s3get --help
+s3push --help
+```
+
+目前通过 GitHub Release 分发 npm 格式的安装包，无需 npm 账号；不依赖 npm registry 中的同名包。npx 的包执行及缓存行为见 [npm 官方文档](https://docs.npmjs.com/cli/v11/commands/npx/)。
+
+### 可选：直接下载二进制
 
 从 [GitHub Releases](https://github.com/eyotang/s3flow/releases/latest) 下载对应系统和 CPU 架构的压缩包。每个包都包含 `s3get`、`s3push`、README 和许可证，无需安装 Go。
 
@@ -33,22 +54,24 @@ make build
 
 ## 发布
 
-本地构建全部六种系统/架构的发布包（需要 Go、Bash、tar、zip 和 shasum）：
+本地构建全部六种系统/架构的发布包及 npx 安装包（需要 Go、Node.js/npm、Bash、tar、zip 和 shasum）：
 
 ```bash
-make release VERSION=v0.1.0
+make release VERSION=v0.1.1
 ```
 
-产物位于 `dist/v0.1.0/`，包含六个压缩包和 `checksums.txt`。构建禁用 CGO，每个包包含两个命令。相同版本的输出目录存在时会拒绝覆盖。
+产物位于 `dist/v0.1.1/`，包含六个系统压缩包、`s3flow-0.1.1.tgz` 通用 npm 安装包和 `checksums.txt`。构建禁用 CGO，每个包包含两个命令。相同版本的输出目录存在时会拒绝覆盖。版本标签必须与 `package.json` 的版本一致。
 
 将发布配置提交并推送后，推送版本标签即可触发 GitHub Actions：
 
 ```bash
-git tag v0.1.0
-git push origin v0.1.0
+git tag v0.1.1
+git push origin v0.1.1
 ```
 
-工作流先在 Windows、macOS、Linux 上运行测试，通过后构建全部发布包并创建 GitHub Release。带连字符的版本（例如 `v0.2.0-rc.1`）会标记为预发布。
+工作流先在 Windows、macOS、Linux 上运行 Go 测试、Node.js 启动器测试和真实 npm 包安装/运行测试，通过后构建全部发布包并创建 GitHub Release。npm 测试在独立缓存中禁用网络和安装脚本，验证两个命令及其退出码。带连字符的版本（例如 `v0.2.0-rc.1`）会标记为预发布。
+
+需要发布到 npm registry 时，先确认包名的发布权限并完成 `npm login`，再发布构建好的 `dist/<版本>/s3flow-<版本号>.tgz`；不能直接发布源码目录，因为其中没有内置二进制。当前 GitHub 工作流只向 GitHub Release 上传安装包。
 
 ## AWS 标准配置
 

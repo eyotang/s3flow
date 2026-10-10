@@ -15,6 +15,7 @@ lint:
 build: s3get s3push
 
 release: test
+	npm test
 	bash scripts/release.sh "$(VERSION)"
 
 s3get s3push:

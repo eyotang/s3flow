@@ -21,6 +21,11 @@ jobs:
           go-version-file: go.mod
           cache: true
       - run: go test ./...
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm test
+      - run: npm run test:package
 
   release:
     needs: test
@@ -33,10 +38,17 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
       - name: Build archives and checksums
         env:
           VERSION: ${{ github.ref_name }}
         run: bash scripts/release.sh "$VERSION"
+      - name: Verify bundled npm package
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: npm run test:package -- "dist/$VERSION/s3flow-${VERSION#v}.tgz"
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}

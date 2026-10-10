@@ -5,6 +5,7 @@
 /s3get
 /s3push
 /bin/
+/dist/
 *.exe
 *.exe~
 *.dll

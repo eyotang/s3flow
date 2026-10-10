@@ -14,6 +14,9 @@ lint:
 
 build: s3get s3push
 
+release: test
+	bash scripts/release.sh "$(VERSION)"
+
 s3get s3push:
 	mkdir -p $(BIN_DIR)
 	go build -ldflags="$(LDFLAGS)" -trimpath -o $(BIN_DIR)/$@ ./cmd/$@
@@ -21,4 +24,4 @@ s3get s3push:
 clean:
 	rm -rf bin dist
 
-.PHONY: all test tidy lint build s3get s3push clean
+.PHONY: all test tidy lint build release s3get s3push clean

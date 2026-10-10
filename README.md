@@ -6,6 +6,18 @@
 
 下载内容先写入目标目录中的临时文件。所有分片完成并同步到磁盘后才提交为最终文件；失败或取消时会清理临时文件。每个分片最多尝试 3 次，请求通过 ETag `If-Match` 固定对象版本，并校验每片响应的 ETag。若服务端未提供强 ETag，工具会自动降为单 Range 请求，避免并发拼接到不同版本的内容。
 
+## 下载二进制版本
+
+从 [GitHub Releases](https://github.com/eyotang/s3flow/releases/latest) 下载对应系统和 CPU 架构的压缩包。每个包都包含 `s3get`、`s3push`、README 和许可证，无需安装 Go。
+
+| 系统 | x86_64 / Intel / AMD | ARM64 |
+| --- | --- | --- |
+| Windows | `s3flow_<版本>_windows_amd64.zip` | `s3flow_<版本>_windows_arm64.zip` |
+| macOS | `s3flow_<版本>_darwin_amd64.tar.gz` | `s3flow_<版本>_darwin_arm64.tar.gz`（Apple Silicon） |
+| Linux | `s3flow_<版本>_linux_amd64.tar.gz` | `s3flow_<版本>_linux_arm64.tar.gz` |
+
+解压后可直接运行，或将两个程序放入 `PATH` 中的目录。Windows 的程序名为 `s3get.exe` 和 `s3push.exe`。发布页提供 `checksums.txt`，macOS/Linux 可用 `shasum -a 256 <压缩包>`，Windows PowerShell 可用 `Get-FileHash <压缩包> -Algorithm SHA256`，与文件中的对应值比较。
+
 ## 构建
 
 ```bash
@@ -18,6 +30,25 @@ go build -o s3push ./cmd/s3push
 ```bash
 make build
 ```
+
+## 发布
+
+本地构建全部六种系统/架构的发布包（需要 Go、Bash、tar、zip 和 shasum）：
+
+```bash
+make release VERSION=v0.1.0
+```
+
+产物位于 `dist/v0.1.0/`，包含六个压缩包和 `checksums.txt`。构建禁用 CGO，每个包包含两个命令。相同版本的输出目录存在时会拒绝覆盖。
+
+将发布配置提交并推送后，推送版本标签即可触发 GitHub Actions：
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+工作流先在 Windows、macOS、Linux 上运行测试，通过后构建全部发布包并创建 GitHub Release。带连字符的版本（例如 `v0.2.0-rc.1`）会标记为预发布。
 
 ## AWS 标准配置
 

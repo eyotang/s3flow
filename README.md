@@ -78,21 +78,21 @@ make build
 本地构建全部六种系统/架构的发布包及 npx 安装包（需要 Go、Node.js/npm、Bash、tar、zip 和 shasum）：
 
 ```bash
-make release VERSION=v0.1.1
+make release VERSION=v0.1.2
 ```
 
-产物位于 `dist/v0.1.1/`，包含六个系统压缩包、`s3flow-0.1.1.tgz` 通用 npm 安装包和 `checksums.txt`。构建禁用 CGO，每个包包含两个命令。相同版本的输出目录存在时会拒绝覆盖。版本标签必须与 `package.json` 的版本一致。
+产物位于 `dist/v0.1.2/`，包含六个系统压缩包、通用 npm 安装包和 `checksums.txt`。构建禁用 CGO，每个包包含两个命令。相同版本的输出目录存在时会拒绝覆盖。版本标签必须与 `package.json` 的版本一致；npm 安装包文件名由包名与版本号生成。
 
 将发布配置提交并推送后，推送版本标签即可触发 GitHub Actions：
 
 ```bash
-git tag v0.1.1
-git push origin v0.1.1
+git tag v0.1.2
+git push origin v0.1.2
 ```
 
-工作流先在 Windows、macOS、Linux 上运行 Go 测试、Node.js 启动器测试和真实 npm 包安装/运行测试，通过后构建全部发布包并创建 GitHub Release。npm 测试在独立缓存中禁用网络和安装脚本，验证两个命令及其退出码。带连字符的版本（例如 `v0.2.0-rc.1`）会标记为预发布。
+工作流先在 Windows、macOS、Linux 上运行 Go 测试、Node.js 启动器测试和真实 npm 包安装/运行测试，通过后构建全部发布包并创建 GitHub Release。npm 测试在独立缓存中禁用网络和安装脚本，验证两个命令、退出码以及全局安装后清理缓存仍可运行。手动触发工作流只运行测试。带连字符的版本（例如 `v0.2.0-rc.1`）会标记为预发布。
 
-需要发布到 npm registry 时，先确认包名的发布权限并完成 `npm login`，再发布构建好的 `dist/<版本>/s3flow-<版本号>.tgz`；不能直接发布源码目录，因为其中没有内置二进制。当前 GitHub 工作流只向 GitHub Release 上传安装包。
+需要发布到 npm registry 时，先确认包名的发布权限并完成 `npm login`，再使用 `npm publish <构建好的安装包.tgz> --access public` 发布；不能直接发布源码目录，因为其中没有内置二进制。当前 GitHub 工作流只向 GitHub Release 上传安装包。
 
 ## AWS 标准配置
 

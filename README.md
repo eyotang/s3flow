@@ -8,19 +8,22 @@
 
 ## 安装与运行（优先使用 npx）
 
-已安装 Node.js 18 或更高版本（含 npm/npx）时，推荐直接运行：
+需要 Node.js 18 或更高版本（含 npm/npx）。本仓库为私有仓库，先使用有仓库访问权限的 GitHub 账号登录 GitHub CLI（首次使用执行 `gh auth login`），下载安装包后用 npx 运行：
 
 ```bash
-npx --yes https://github.com/eyotang/s3flow/releases/download/v0.1.1/s3flow-0.1.1.tgz s3get --help
-npx --yes https://github.com/eyotang/s3flow/releases/download/v0.1.1/s3flow-0.1.1.tgz s3push --help
+gh release download v0.1.1 --repo eyotang/s3flow --pattern s3flow-0.1.1.tgz
+npx --yes --package=./s3flow-0.1.1.tgz s3get --help
+npx --yes --package=./s3flow-0.1.1.tgz s3push --help
 ```
 
-把 `--help` 替换成下文对应命令的参数即可下载或上传。npx 会自动将包安装到 npm 缓存，并选择当前系统的二进制；Windows、macOS、Linux 的 x86_64 和 ARM64 使用相同命令。包中包含两个工具的全部平台二进制，首次下载体积较大，但无需 Go、编译器或安装脚本。再次运行可复用缓存。
+也可在已登录 GitHub 的浏览器中从 [v0.1.1 发布页](https://github.com/eyotang/s3flow/releases/tag/v0.1.1) 下载 `s3flow-0.1.1.tgz`，然后在下载目录执行上述 npx 命令。私有 Release 的匿名 URL 会返回 404，因此不能直接把下载 URL 传给 npx。
+
+把 `--help` 替换成下文对应命令的参数即可下载或上传。npx 会自动将包安装到 npm 缓存，并选择当前系统的二进制；Windows、macOS、Linux 的 x86_64 和 ARM64 使用相同命令。包中包含两个工具的全部平台二进制，约 50 MB，无需 Go、编译器或安装脚本。再次运行可复用缓存；运行目录改变时请将 `--package` 指向安装包的实际路径。
 
 也可以一次安装，之后直接使用 `s3get` 和 `s3push`：
 
 ```bash
-npm install --global https://github.com/eyotang/s3flow/releases/download/v0.1.1/s3flow-0.1.1.tgz
+npm install --global ./s3flow-0.1.1.tgz
 s3get --help
 s3push --help
 ```

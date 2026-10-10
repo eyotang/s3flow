@@ -12,36 +12,36 @@
 
 安装体验参考 [lark-cli](https://github.com/larksuite/cli) 的 `npx @larksuite/cli@latest install`：执行一次安装命令，之后直接使用两个工具。
 
-> npm 短命令将在首次 npm 发布完成后可用；当前可用版本仍为下方 GitHub Release 方式。发布包名以实际 npm 发布结果为准。
+需要 Node.js 18 或更高版本（含 npm/npx），无需 Go 或 GitHub 账号。
 
 ```bash
-npx s3flow@latest install
+npx @eyotang/s3flow@latest install
 s3get --help
 s3push --help
 ```
 
-安装器使用 npm 的全局安装目录，同时安装两个命令。可指定可写目录：`npx s3flow@latest install --prefix <目录>`，并将输出提示中的命令目录加入 `PATH`。全局安装只保留当前平台的二进制，不依赖 npx 缓存；同一条安装命令可用于升级。已有 AWS 配置继续使用，不需要在安装时填写凭据。
+安装器使用 npm 的全局安装目录，同时安装两个命令。可指定可写目录：`npx @eyotang/s3flow@latest install --prefix <目录>`，并将输出提示中的命令目录加入 `PATH`。全局安装只保留当前平台的二进制，不依赖 npx 缓存；同一条安装命令可用于升级。已有 AWS 配置继续使用，不需要在安装时填写凭据。
 
-临时使用而不进行全局安装：`npx s3flow@latest s3get --help` 或 `npx s3flow@latest s3push --help`。公开 npm 包内置二进制，不要求使用者访问私有 GitHub 仓库。
+临时使用而不进行全局安装：`npx @eyotang/s3flow@latest s3get --help` 或 `npx @eyotang/s3flow@latest s3push --help`。公开 npm 包内置二进制，不要求使用者访问私有 GitHub 仓库。
 
-### GitHub Release 安装（当前可用）
+### 可选：GitHub Release 安装
 
 需要 Node.js 18 或更高版本（含 npm/npx）。本仓库为私有仓库，先使用有仓库访问权限的 GitHub 账号登录 GitHub CLI（首次使用执行 `gh auth login`），下载安装包后用 npx 运行：
 
 ```bash
-gh release download v0.1.1 --repo eyotang/s3flow --pattern s3flow-0.1.1.tgz
-npx --yes --package=./s3flow-0.1.1.tgz s3get --help
-npx --yes --package=./s3flow-0.1.1.tgz s3push --help
+gh release download v0.1.2 --repo eyotang/s3flow --pattern eyotang-s3flow-0.1.2.tgz
+npx --yes --package=./eyotang-s3flow-0.1.2.tgz s3get --help
+npx --yes --package=./eyotang-s3flow-0.1.2.tgz s3push --help
 ```
 
-也可在已登录 GitHub 的浏览器中从 [v0.1.1 发布页](https://github.com/eyotang/s3flow/releases/tag/v0.1.1) 下载 `s3flow-0.1.1.tgz`，然后在下载目录执行上述 npx 命令。私有 Release 的匿名 URL 会返回 404，因此不能直接把下载 URL 传给 npx。
+也可在已登录 GitHub 的浏览器中从 [v0.1.2 发布页](https://github.com/eyotang/s3flow/releases/tag/v0.1.2) 下载 `eyotang-s3flow-0.1.2.tgz`，然后在下载目录执行上述 npx 命令。私有 Release 的匿名 URL 会返回 404，因此不能直接把下载 URL 传给 npx。
 
 把 `--help` 替换成下文对应命令的参数即可下载或上传。npx 会自动将包安装到 npm 缓存，并选择当前系统的二进制；Windows、macOS、Linux 的 x86_64 和 ARM64 使用相同命令。包中包含两个工具的全部平台二进制，约 50 MB，无需 Go、编译器或安装脚本。再次运行可复用缓存；运行目录改变时请将 `--package` 指向安装包的实际路径。
 
 也可以一次安装，之后直接使用 `s3get` 和 `s3push`：
 
 ```bash
-npm install --global ./s3flow-0.1.1.tgz
+npm install --global ./eyotang-s3flow-0.1.2.tgz
 s3get --help
 s3push --help
 ```

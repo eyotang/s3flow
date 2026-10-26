@@ -227,10 +227,7 @@ func (m uploadModel) View() tea.View {
 	}
 	builder.WriteString("\n\n")
 	if m.currentFile != "" && !m.done {
-		percent := float64(0)
-		if m.fileTotal > 0 {
-			percent = float64(m.fileTransferred) / float64(m.fileTotal)
-		}
+		percent := m.filePercent()
 		builder.WriteString(labelStyle.Render("当前文件") + "\n")
 		builder.WriteString(m.progress.ViewAs(max(0, min(1, percent))))
 		fmt.Fprintf(&builder, "\n%s / %s\n\n", pkg.FormatBytes(m.fileTransferred), pkg.FormatBytes(m.fileTotal))
@@ -272,6 +269,9 @@ func writeDetail(builder *strings.Builder, label, value string) {
 
 func (m uploadModel) percent() float64 {
 	if m.total <= 0 {
+		if m.totalFiles > 0 {
+			return max(0, min(1, float64(m.completedFiles)/float64(m.totalFiles)))
+		}
 		return 0
 	}
 	value := float64(m.uploaded) / float64(m.total)
@@ -318,4 +318,16 @@ func formatDuration(value time.Duration) string {
 		return fmt.Sprintf("%dh%02dm%02ds", hours, minutes, seconds)
 	}
 	return fmt.Sprintf("%dm%02ds", minutes, seconds)
+}
+
+// Zero-byte files complete when S3 acknowledges the upload, even though
+// their byte count never changes.
+func (m uploadModel) filePercent() float64 {
+	if m.fileTotal > 0 {
+		return max(0, min(1, float64(m.fileTransferred)/float64(m.fileTotal)))
+	}
+	if m.totalParts > 0 && m.completedParts >= m.totalParts {
+		return 1
+	}
+	return 0
 }

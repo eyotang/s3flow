@@ -21,11 +21,16 @@ type uploadStub struct {
 	body                                  []byte
 	fail, failComplete, aborted, finished bool
 	condition                             string
+	nilBody                               bool
 	cancel                                context.CancelFunc
 }
 
 func (s *uploadStub) PutObject(_ context.Context, in *s3.PutObjectInput, _ ...func(*s3.Options)) (*s3.PutObjectOutput, error) {
-	s.body, _ = io.ReadAll(in.Body)
+	s.nilBody = in.Body == nil
+	s.body = nil
+	if in.Body != nil {
+		s.body, _ = io.ReadAll(in.Body)
+	}
 	s.condition = aws.ToString(in.IfNoneMatch)
 	return &s3.PutObjectOutput{}, nil
 }
@@ -102,6 +107,9 @@ func TestUploadObject(t *testing.T) {
 			}
 			if err != nil {
 				t.Fatal(err)
+			}
+			if tc.size == 0 && !stub.nilBody {
+				t.Fatal("empty object must omit the request body")
 			}
 			if !bytes.Equal(data, stub.body) || stub.aborted {
 				t.Fatal("data mismatch or aborted success")
@@ -301,6 +309,28 @@ func TestPlanUploadAcceptsZeroByteFiles(t *testing.T) {
 		_, files, err := planUpload(source, "s3://bucket/prefix/")
 		if err != nil || len(files) != 1 || files[0].local != name {
 			t.Fatalf("files=%v err=%v", files, err)
+		}
+	}
+}
+
+func TestRunUploadWithEmptyFiles(t *testing.T) {
+	for _, sizes := range [][]int{{0, 0, 0}, {0, 3, 0, 2, 0}} {
+		dir := t.TempDir()
+		var files []uploadFile
+		var total int64
+		for i, size := range sizes {
+			name := filepath.Join(dir, string(rune('a'+i)))
+			if err := os.WriteFile(name, make([]byte, size), 0600); err != nil {
+				t.Fatal(err)
+			}
+			files = append(files, uploadFile{name, filepath.Base(name)})
+			total += int64(size)
+		}
+		events := make(chan uploadProgress, 1)
+		runUpload(context.Background(), &uploadStub{}, uploadRequest{bucket: "bucket", files: files, partSize: 5 << 20, concurrency: 2}, events)
+		final := <-events
+		if !final.done || final.err != nil || final.completedFiles != len(files) || final.uploaded != total || final.total != total {
+			t.Fatalf("unexpected progress: %+v", final)
 		}
 	}
 }

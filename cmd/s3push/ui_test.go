@@ -86,3 +86,30 @@ func TestProgressTrackVisibleAndCompact(t *testing.T) {
 		t.Fatalf("view flooded by part details: %s", view)
 	}
 }
+
+func TestEmptyFilesProgressUsesCompletedFiles(t *testing.T) {
+	m := newUploadModel(nil, uploadRequest{})
+	defer m.cancel()
+	m.totalFiles = 3
+	m.completedFiles = 1
+	if got := m.percent(); got != 1.0/3 {
+		t.Fatalf("percent=%v", got)
+	}
+	m.completedFiles = 3
+	if got := m.percent(); got != 1 {
+		t.Fatalf("percent=%v", got)
+	}
+}
+
+func TestEmptyFileProgressWaitsForCompletion(t *testing.T) {
+	m := newUploadModel(nil, uploadRequest{})
+	defer m.cancel()
+	m.totalParts = 1
+	if got := m.filePercent(); got != 0 {
+		t.Fatalf("pending percent=%v", got)
+	}
+	m.completedParts = 1
+	if got := m.filePercent(); got != 1 {
+		t.Fatalf("completed percent=%v", got)
+	}
+}

@@ -124,7 +124,13 @@ func uploadObject(ctx context.Context, client uploadAPI, bucket string, file upl
 	}
 	if info.Size() <= partSize {
 		tracker.startPart(1, info.Size())
-		_, err = client.PutObject(ctx, &s3.PutObjectInput{Bucket: aws.String(bucket), Key: aws.String(file.key), Body: &uploadReader{reader: io.NewSectionReader(handle, 0, info.Size()), tracker: tracker, part: 1}, ContentLength: aws.Int64(info.Size()), IfNoneMatch: condition})
+		// Empty objects have no payload. Avoid passing a non-nil stream with
+		// zero ContentLength through SDK middleware and HTTP transports.
+		var body io.Reader
+		if info.Size() > 0 {
+			body = &uploadReader{reader: io.NewSectionReader(handle, 0, info.Size()), tracker: tracker, part: 1}
+		}
+		_, err = client.PutObject(ctx, &s3.PutObjectInput{Bucket: aws.String(bucket), Key: aws.String(file.key), Body: body, ContentLength: aws.Int64(info.Size()), IfNoneMatch: condition})
 		if err == nil {
 			tracker.finishPart(1)
 		}

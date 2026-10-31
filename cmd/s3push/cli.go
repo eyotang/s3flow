@@ -11,6 +11,7 @@ import (
 
 type cliOptions struct {
 	pkg.Options
+	version     bool
 	source      string
 	destination string
 	partSize    int64
@@ -25,6 +26,7 @@ func newCLIFlagSet(opts *cliOptions, output io.Writer) (*flag.FlagSet, *pkg.Byte
 	fs := flag.NewFlagSet("s3push", flag.ContinueOnError)
 	fs.SetOutput(output)
 	pkg.AddConnectionFlags(fs, &opts.Options)
+	fs.BoolVar(&opts.version, "version", false, "显示当前版本并退出")
 	fs.IntVar(&opts.concurrency, "concurrency", pkg.DefaultConcurrency, "并发分片数 `N`，范围 1-128")
 	fs.BoolVar(&opts.force, "force", false, "允许上传到非空目标目录并覆盖同名对象")
 	partSize := &pkg.ByteSizeFlag{Value: pkg.DefaultPartSize}
@@ -44,6 +46,9 @@ func parseCLI(args []string) (cliOptions, error) {
 	flags, size := newCLIFlagSet(&opts, io.Discard)
 	if err := flags.Parse(args); err != nil {
 		return cliOptions{}, err
+	}
+	if opts.version {
+		return opts, nil
 	}
 	flags.Visit(func(f *flag.Flag) {
 		switch f.Name {

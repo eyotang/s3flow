@@ -14,9 +14,6 @@ import (
 )
 
 func main() {
-	if update.BeforeRun("s3push") {
-		return
-	}
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
 }
 
@@ -31,6 +28,13 @@ func run(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "参数错误: %v\n", err)
 		printCLIUsage(stderr)
 		return 2
+	}
+	if opts.version {
+		fmt.Fprintln(stdout, "s3push", update.Version)
+		return 0
+	}
+	if update.BeforeRun("s3push") {
+		return 0
 	}
 	bucket, files, err := planUpload(opts.source, opts.destination)
 	if err != nil {

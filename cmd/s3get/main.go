@@ -13,9 +13,6 @@ import (
 )
 
 func main() {
-	if update.BeforeRun("s3get") {
-		return
-	}
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
 }
 
@@ -29,6 +26,13 @@ func run(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "参数错误: %v\n\n", err)
 		printCLIUsage(stderr)
 		return 2
+	}
+	if options.version {
+		fmt.Fprintln(stdout, "s3get", update.Version)
+		return 0
+	}
+	if update.BeforeRun("s3get") {
+		return 0
 	}
 	configuration, err := resolveConfig(options)
 	if err != nil {

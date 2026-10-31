@@ -13,6 +13,7 @@ import (
 
 type cliOptions struct {
 	pkg.Options
+	version     bool
 	source      string
 	output      string
 	partSize    int64
@@ -41,6 +42,9 @@ func parseCLI(args []string) (cliOptions, error) {
 	fs, partSize := newCLIFlagSet(&opts, io.Discard)
 	if err := fs.Parse(args); err != nil {
 		return cliOptions{}, err
+	}
+	if opts.version {
+		return opts, nil
 	}
 	fs.Visit(func(parsed *flag.Flag) {
 		switch parsed.Name {
@@ -87,6 +91,7 @@ func newCLIFlagSet(opts *cliOptions, output io.Writer) (*flag.FlagSet, *pkg.Byte
 	fs := flag.NewFlagSet("s3get", flag.ContinueOnError)
 	fs.SetOutput(output)
 	pkg.AddConnectionFlags(fs, &opts.Options)
+	fs.BoolVar(&opts.version, "version", false, "显示当前版本并退出")
 	fs.StringVar(&opts.output, "o", "", "输出文件 `FILE`")
 	fs.StringVar(&opts.output, "output", "", "输出文件 `FILE`（等同 -o）")
 	fs.IntVar(&opts.concurrency, "concurrency", pkg.DefaultConcurrency, "并发分片数 `N`，范围 1-128")

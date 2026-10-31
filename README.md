@@ -22,24 +22,32 @@ s3push --help
 
 临时使用而不进行全局安装：`npx @eyotang/s3flow@latest s3get --help` 或 `npx @eyotang/s3flow@latest s3push --help`。公开 npm 包内置二进制，不要求使用者访问私有 GitHub 仓库。
 
+### 自动更新（GitHub Release）
+
+npm/npx 用于首次安装引导。正式发布的 `s3get` 和 `s3push` 在每次启动时自行检查 GitHub Release，与后续是否使用 npm 无关。检测（含私有仓库鉴权）的总时限为 1.5 秒，超时或失败跳过检测，继续执行原命令。
+
+发现正式新版时显示版本号；交互终端中输入 `y` 或 `yes` 才下载当前系统与架构的 Release 压缩包，校验 `checksums.txt` 中的 SHA-256 后替换当前命令。更新成功后退出，请重新运行原命令；拒绝或检测失败则继续。两个独立命令分别更新各自的可执行文件。非交互环境仅提示，不等待输入。开发构建不检测更新。
+
+私有仓库需要具有仓库读取权限的 `GH_TOKEN` / `GITHUB_TOKEN`，或事先执行 `gh auth login`。没有权限时检测会跳过。更新文件需有当前安装目录的写权限，不会自动提权；更新失败时报告错误。GitHub Release 是后续版本与下载产物的唯一来源，无需重新发布 npm 包来更新已有安装。
+
 ### 可选：GitHub Release 安装
 
 需要 Node.js 18 或更高版本（含 npm/npx）。本仓库为私有仓库，先使用有仓库访问权限的 GitHub 账号登录 GitHub CLI（首次使用执行 `gh auth login`），下载安装包后用 npx 运行：
 
 ```bash
-gh release download v0.1.2 --repo eyotang/s3flow --pattern eyotang-s3flow-0.1.2.tgz
-npx --yes --package=./eyotang-s3flow-0.1.2.tgz s3get --help
-npx --yes --package=./eyotang-s3flow-0.1.2.tgz s3push --help
+gh release download v0.1.4 --repo eyotang/s3flow --pattern eyotang-s3flow-0.1.4.tgz
+npx --yes --package=./eyotang-s3flow-0.1.4.tgz s3get --help
+npx --yes --package=./eyotang-s3flow-0.1.4.tgz s3push --help
 ```
 
-也可在已登录 GitHub 的浏览器中从 [v0.1.2 发布页](https://github.com/eyotang/s3flow/releases/tag/v0.1.2) 下载 `eyotang-s3flow-0.1.2.tgz`，然后在下载目录执行上述 npx 命令。私有 Release 的匿名 URL 会返回 404，因此不能直接把下载 URL 传给 npx。
+也可在已登录 GitHub 的浏览器中从 [v0.1.4 发布页](https://github.com/eyotang/s3flow/releases/tag/v0.1.4) 下载 `eyotang-s3flow-0.1.4.tgz`，然后在下载目录执行上述 npx 命令。私有 Release 的匿名 URL 会返回 404，因此不能直接把下载 URL 传给 npx。
 
 把 `--help` 替换成下文对应命令的参数即可下载或上传。npx 会自动将包安装到 npm 缓存，并选择当前系统的二进制；Windows、macOS、Linux 的 x86_64 和 ARM64 使用相同命令。包中包含两个工具的全部平台二进制，约 50 MB，无需 Go、编译器或安装脚本。再次运行可复用缓存；运行目录改变时请将 `--package` 指向安装包的实际路径。
 
 也可以一次安装，之后直接使用 `s3get` 和 `s3push`：
 
 ```bash
-npm install --global ./eyotang-s3flow-0.1.2.tgz
+npm install --global ./eyotang-s3flow-0.1.4.tgz
 s3get --help
 s3push --help
 ```
@@ -76,16 +84,16 @@ make build
 本地构建全部六种系统/架构的发布包及 npx 安装包（需要 Go、Node.js/npm、Bash、tar、zip 和 shasum）：
 
 ```bash
-make release VERSION=v0.1.3
+make release VERSION=v0.1.4
 ```
 
-产物位于 `dist/v0.1.3/`，包含六个系统压缩包、通用 npm 安装包和 `checksums.txt`。构建禁用 CGO，每个包包含两个命令。相同版本的输出目录存在时会拒绝覆盖。版本标签必须与 `package.json` 的版本一致；npm 安装包文件名由包名与版本号生成。
+产物位于 `dist/v0.1.4/`，包含六个系统压缩包、通用 npm 安装包和 `checksums.txt`。构建禁用 CGO，每个包包含两个命令。相同版本的输出目录存在时会拒绝覆盖。版本标签必须与 `package.json` 的版本一致；npm 安装包文件名由包名与版本号生成。
 
 将发布配置提交并推送后，推送版本标签即可触发 GitHub Actions：
 
 ```bash
-git tag v0.1.3
-git push origin v0.1.3
+git tag v0.1.4
+git push origin v0.1.4
 ```
 
 工作流先在 Windows、macOS、Linux 上运行 Go 测试、Node.js 启动器测试和真实 npm 包安装/运行测试，通过后构建全部发布包并创建 GitHub Release。npm 测试在独立缓存中禁用网络和安装脚本，验证两个命令、退出码以及全局安装后清理缓存仍可运行。手动触发工作流只运行测试。带连字符的版本（例如 `v0.2.0-rc.1`）会标记为预发布。

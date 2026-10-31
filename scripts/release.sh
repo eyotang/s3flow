@@ -37,7 +37,7 @@ for os in linux darwin windows; do
     for command in s3get s3push; do
       echo "Building $command for $os/$arch"
       CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" go build \
-        -trimpath -ldflags='-s -w' -o "$package/$command$suffix" "./cmd/$command"
+        -trimpath -ldflags="-s -w -X github.com/eyotang/s3flow/internal/update.Version=$version" -o "$package/$command$suffix" "./cmd/$command"
     done
     node_os="$os"
     node_arch="$arch"

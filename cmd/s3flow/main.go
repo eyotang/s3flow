@@ -16,7 +16,7 @@ import (
 var errUpdated = errors.New("updated")
 
 func newCommand() *cobra.Command {
-	root := &cobra.Command{Use: "s3flow", Short: "S3 文件上传与下载", Version: update.Version, SilenceErrors: true, SilenceUsage: true}
+	root := &cobra.Command{Use: "s3flow", Short: "Upload and download files with S3", Version: update.Version, SilenceErrors: true, SilenceUsage: true}
 	root.SetVersionTemplate("s3flow {{.Version}}\n")
 	root.CompletionOptions.DisableDefaultCmd = true
 	root.PersistentPreRunE = func(c *cobra.Command, _ []string) error {
@@ -42,7 +42,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	if errors.As(err, &exit) {
 		return int(exit)
 	}
-	fmt.Fprintf(stderr, "参数错误: %v\n\n", err)
+	fmt.Fprintf(stderr, "Argument error: %v\n\n", err)
 	command.SetOut(stderr)
 	command.Help()
 	return 2

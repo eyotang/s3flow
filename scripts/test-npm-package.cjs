@@ -62,7 +62,7 @@ try {
       const result = npmExec(args);
       assert.equal(result.status, 0, result.stderr);
       assert.match(result.stdout + result.stderr, /-concurrency N/);
-      assert.ok(result.stdout.includes(`s3flow ${subcommand} [参数]`), 'Dispatched to the wrong native command');
+      assert.ok(result.stdout.includes(`s3flow ${subcommand} [flags]`), 'Dispatched to the wrong native command');
     }
     const version = npmExec(['s3flow', subcommand, '--version']);
     assert.equal(version.status, 0, version.stderr);

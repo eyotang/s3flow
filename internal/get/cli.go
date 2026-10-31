@@ -62,20 +62,20 @@ func parseCLI(args []string) (cliOptions, error) {
 func validateCLI(opts cliOptions, size int64, positionals []string) (cliOptions, error) {
 	opts.partSize = size
 	if len(positionals) < 1 || len(positionals) > 2 {
-		return cliOptions{}, errors.New("用法: s3get [参数] <s3://bucket/key|预签名URL> [输出文件]")
+		return cliOptions{}, errors.New("Usage: s3get [flags] <s3://bucket/key|presigned-url> [output]")
 	}
 	opts.source = positionals[0]
 	if len(positionals) == 2 {
 		if opts.output != "" {
-			return cliOptions{}, errors.New("输出文件不能同时使用位置参数和 --output")
+			return cliOptions{}, errors.New("Specify the output file either as a positional argument or with --output, not both")
 		}
 		opts.output = positionals[1]
 	}
 	if opts.concurrency < 1 || opts.concurrency > pkg.MaxConcurrency {
-		return cliOptions{}, fmt.Errorf("--concurrency 必须在 1 到 %d 之间", pkg.MaxConcurrency)
+		return cliOptions{}, fmt.Errorf("--concurrency must be between 1 and %d", pkg.MaxConcurrency)
 	}
 	if opts.partSize <= 0 {
-		return cliOptions{}, errors.New("--part-size 必须大于 0")
+		return cliOptions{}, errors.New("--part-size must be greater than zero")
 	}
 	return opts, nil
 }
@@ -94,22 +94,22 @@ func newCLIFlagSet(opts *cliOptions, output io.Writer) (*flag.FlagSet, *pkg.Byte
 	fs := flag.NewFlagSet("s3get", flag.ContinueOnError)
 	fs.SetOutput(output)
 	pkg.AddConnectionFlags(fs, &opts.Options)
-	fs.BoolVar(&opts.version, "version", false, "显示当前版本并退出")
-	fs.StringVar(&opts.output, "o", "", "输出文件 `FILE`")
-	fs.StringVar(&opts.output, "output", "", "输出文件 `FILE`（等同 -o）")
-	fs.IntVar(&opts.concurrency, "concurrency", pkg.DefaultConcurrency, "并发分片数 `N`，范围 1-128")
-	fs.BoolVar(&opts.recursive, "recursive", false, "按目录前缀递归下载（等同 -r）")
-	fs.BoolVar(&opts.recursive, "r", false, "按目录前缀递归下载")
-	fs.BoolVar(&opts.force, "force", false, "覆盖已有输出文件")
+	fs.BoolVar(&opts.version, "version", false, "Print version and exit")
+	fs.StringVar(&opts.output, "o", "", "Output file `FILE`")
+	fs.StringVar(&opts.output, "output", "", "Output file `FILE`")
+	fs.IntVar(&opts.concurrency, "concurrency", pkg.DefaultConcurrency, "Concurrent parts `N` (1-128)")
+	fs.BoolVar(&opts.recursive, "recursive", false, "Download all objects under a prefix")
+	fs.BoolVar(&opts.recursive, "r", false, "Download all objects under a prefix")
+	fs.BoolVar(&opts.force, "force", false, "Overwrite existing output files")
 	partSize := &pkg.ByteSizeFlag{Value: pkg.DefaultPartSize}
-	fs.Var(partSize, "part-size", "分片大小 `SIZE`，例如 128MiB、1GiB")
+	fs.Var(partSize, "part-size", "Part size `SIZE` (e.g. 128MiB or 1GiB)")
 	fs.Usage = func() {
-		fmt.Fprintln(output, "用法:")
-		fmt.Fprintln(output, "  s3flow get [参数] s3://bucket/key [输出文件]")
-		fmt.Fprintln(output, "  s3get [参数] s3://bucket/key [输出文件]")
-		fmt.Fprintln(output, "  s3get [参数] 'https://Endpoint/bucket/key?预签名参数' [输出文件]")
+		fmt.Fprintln(output, "Usage:")
+		fmt.Fprintln(output, "  s3flow get [flags] s3://bucket/key [output]")
+		fmt.Fprintln(output, "  s3get [flags] s3://bucket/key [output]")
+		fmt.Fprintln(output, "  s3get [flags] 'https://Endpoint/bucket/key?presigned-parameters' [output]")
 		fmt.Fprintln(output)
-		fmt.Fprintln(output, "参数（-flag 与 --flag 均可）:")
+		fmt.Fprintln(output, "Flags (both -flag and --flag are accepted):")
 		pkg.PrintGroupedFlags(output, fs)
 	}
 	return fs, partSize

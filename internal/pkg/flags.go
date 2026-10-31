@@ -9,21 +9,21 @@ import (
 )
 
 func AddConnectionFlags(fs *flag.FlagSet, opts *Options) {
-	fs.StringVar(&opts.Endpoint, "Endpoint", "", "S3 Endpoint `URL`，例如 https://s3.example.com")
-	fs.StringVar(&opts.AccessKey, "ak", "", "access key `VALUE`，也可使用 AWS_ACCESS_KEY_ID")
-	fs.StringVar(&opts.SecretKey, "sk", "", "secret key `VALUE`，也可使用 AWS_SECRET_ACCESS_KEY")
-	fs.StringVar(&opts.SessionToken, "session-token", "", "临时凭据 session token `VALUE`，也可使用 AWS_SESSION_TOKEN")
-	fs.StringVar(&opts.Region, "Region", "", "S3 Region `VALUE`（未配置时使用 cn-sh）")
-	fs.StringVar(&opts.AWSDirectory, "aws", "", "AWS 配置目录 `DIR`，目录内包含 config 与 credentials（默认 ~/.aws）")
-	fs.StringVar(&opts.AWSProfile, "p", "", "AWS 命名 profile `NAME`（等同 --profile）")
-	fs.StringVar(&opts.AWSProfile, "profile", "", "AWS 命名 profile `NAME`（语义与 aws --profile 相同，默认 AWS_PROFILE/default）")
-	fs.BoolVar(&opts.PathStyle, "path-style", true, "使用 path-style S3 请求；设为 false 时使用 bucket.Endpoint")
+	fs.StringVar(&opts.Endpoint, "Endpoint", "", "S3 endpoint `URL` (e.g. https://s3.example.com)")
+	fs.StringVar(&opts.AccessKey, "ak", "", "AWS access key `VALUE` (or AWS_ACCESS_KEY_ID)")
+	fs.StringVar(&opts.SecretKey, "sk", "", "AWS secret key `VALUE` (or AWS_SECRET_ACCESS_KEY)")
+	fs.StringVar(&opts.SessionToken, "session-token", "", "AWS session token `VALUE` (or AWS_SESSION_TOKEN)")
+	fs.StringVar(&opts.Region, "Region", "", "S3 region `VALUE` (fallback: cn-sh)")
+	fs.StringVar(&opts.AWSDirectory, "aws", "", "AWS config directory `DIR` containing config and credentials (default: ~/.aws)")
+	fs.StringVar(&opts.AWSProfile, "p", "", "AWS named profile `NAME` (alias for --profile)")
+	fs.StringVar(&opts.AWSProfile, "profile", "", "AWS named profile `NAME` (default: AWS_PROFILE or default)")
+	fs.BoolVar(&opts.PathStyle, "path-style", true, "Use path-style S3 requests; false uses virtual-hosted style (bucket.Endpoint)")
 }
 
 // PrintGroupedFlags keeps the registered flag definitions and defaults as the
 // source of truth, while placing related options together in help output.
 func PrintGroupedFlags(output io.Writer, fs *flag.FlagSet) {
-	titles := []string{"连接配置", "身份凭据", "传输设置", "文件操作", "通用参数"}
+	titles := []string{"Connection", "Credentials", "Transfer", "Files", "General"}
 	groups := make([]*flag.FlagSet, len(titles))
 	for i := range groups {
 		groups[i] = flag.NewFlagSet("", flag.ContinueOnError)
@@ -38,7 +38,7 @@ func PrintGroupedFlags(output io.Writer, fs *flag.FlagSet) {
 		fmt.Fprintf(output, "\n%s:\n", titles[i])
 		group.PrintDefaults()
 		if i == 4 {
-			fmt.Fprintln(output, "  -h, --help\n    \t显示帮助并退出")
+			fmt.Fprintln(output, "  -h, --help\n    \tShow help and exit")
 		}
 	}
 }
@@ -46,7 +46,7 @@ func PrintGroupedFlags(output io.Writer, fs *flag.FlagSet) {
 // ExitError carries an already-reported transfer exit status to the entrypoint.
 type ExitError int
 
-func (e ExitError) Error() string { return fmt.Sprintf("命令退出码 %d", int(e)) }
+func (e ExitError) Error() string { return fmt.Sprintf("Command exited with status %d", int(e)) }
 
 func flagGroup(name string) int {
 	switch name {
@@ -65,7 +65,7 @@ func flagGroup(name string) int {
 
 // PrintGroupedCobraFlags uses pflag's native long and short flag syntax.
 func PrintGroupedCobraFlags(output io.Writer, flags *pflag.FlagSet) {
-	titles := []string{"连接配置", "身份凭据", "传输设置", "文件操作", "通用参数"}
+	titles := []string{"Connection", "Credentials", "Transfer", "Files", "General"}
 	groups := make([]*pflag.FlagSet, len(titles))
 	for i := range groups {
 		groups[i] = pflag.NewFlagSet("", pflag.ContinueOnError)

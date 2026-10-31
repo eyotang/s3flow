@@ -34,7 +34,7 @@ s3flow get s3://bucket/path/file.zip ./file.zip
 s3flow push ./data s3://bucket/backup/
 ```
 
-帮助信息按连接配置、身份凭据、传输设置、文件操作、通用参数分区展示。子命令由 Cobra 解析参数，直接调用共享的 Go 传输与终端界面实现。长参数使用 `--flag`，短参数使用 `-p`、`-o`、`-r` 等形式，参数可放在路径前后。兼容 `s3flow s3get`、`s3flow s3push` 写法。临时使用可执行 `npx @eyotang/s3flow@latest get --help` 或 `npx @eyotang/s3flow@latest push --help`。
+命令行帮助使用英文，按 Connection、Credentials、Transfer、Files、General 分区展示。子命令由 Cobra 解析参数，直接调用共享的 Go 传输与终端界面实现。长参数使用 `--flag`，短参数使用 `-p`、`-o`、`-r` 等形式，参数可放在路径前后。兼容 `s3flow s3get`、`s3flow s3push` 写法。临时使用可执行 `npx @eyotang/s3flow@latest get --help` 或 `npx @eyotang/s3flow@latest push --help`。
 
 ### 查看当前版本
 
@@ -59,19 +59,19 @@ npm/npx 用于首次安装引导。正式发布的 `s3flow` 在执行 get/push �
 需要 Node.js 18 或更高版本（含 npm/npx）。本仓库为私有仓库，先使用有仓库访问权限的 GitHub 账号登录 GitHub CLI（首次使用执行 `gh auth login`），下载安装包后用 npx 运行：
 
 ```bash
-gh release download v0.2.0 --repo eyotang/s3flow --pattern eyotang-s3flow-0.2.0.tgz
-npx --yes --package=./eyotang-s3flow-0.2.0.tgz s3get --help
-npx --yes --package=./eyotang-s3flow-0.2.0.tgz s3push --help
+gh release download v0.2.1 --repo eyotang/s3flow --pattern eyotang-s3flow-0.2.1.tgz
+npx --yes --package=./eyotang-s3flow-0.2.1.tgz s3get --help
+npx --yes --package=./eyotang-s3flow-0.2.1.tgz s3push --help
 ```
 
-也可在已登录 GitHub 的浏览器中从 [v0.2.0 发布页](https://github.com/eyotang/s3flow/releases/tag/v0.2.0) 下载 `eyotang-s3flow-0.2.0.tgz`，然后在下载目录执行上述 npx 命令。私有 Release 的匿名 URL 会返回 404，因此不能直接把下载 URL 传给 npx。
+也可在已登录 GitHub 的浏览器中从 [v0.2.1 发布页](https://github.com/eyotang/s3flow/releases/tag/v0.2.1) 下载 `eyotang-s3flow-0.2.1.tgz`，然后在下载目录执行上述 npx 命令。私有 Release 的匿名 URL 会返回 404，因此不能直接把下载 URL 传给 npx。
 
 把 `--help` 替换成下文对应命令的参数即可下载或上传。npx 会自动将包安装到 npm 缓存，并选择当前系统的二进制；Windows、macOS、Linux 的 x86_64 和 ARM64 使用相同命令。包中包含全部平台的 `s3flow` 统一二进制，无需 Go、编译器或安装脚本。再次运行可复用缓存；运行目录改变时请将 `--package` 指向安装包的实际路径。
 
 也可以一次安装，之后直接使用 `s3get` 和 `s3push`：
 
 ```bash
-npm install --global ./eyotang-s3flow-0.2.0.tgz
+npm install --global ./eyotang-s3flow-0.2.1.tgz
 s3get --help
 s3push --help
 ```
@@ -109,19 +109,19 @@ make build
 本地构建全部六种系统/架构的发布包及 npx 安装包（需要 Go、Node.js/npm、Bash、tar、zip 和 shasum）：
 
 ```bash
-make release VERSION=v0.2.0
+make release VERSION=v0.2.1
 ```
 
-产物位于 `dist/v0.2.0/`，包含六个系统压缩包、通用 npm 安装包和 `checksums.txt`。构建禁用 CGO，原生压缩包包含统一入口和两个兼容命令，npm 包仅内置统一二进制并提供三个启动入口。相同版本的输出目录存在时会拒绝覆盖。版本标签必须与 `package.json` 的版本一致；npm 安装包文件名由包名与版本号生成。
+产物位于 `dist/v0.2.1/`，包含六个系统压缩包、通用 npm 安装包和 `checksums.txt`。构建禁用 CGO，原生压缩包包含统一入口和两个兼容命令，npm 包仅内置统一二进制并提供三个启动入口。相同版本的输出目录存在时会拒绝覆盖。版本标签必须与 `package.json` 的版本一致；npm 安装包文件名由包名与版本号生成。
 
 将发布配置提交并推送后，推送版本标签即可触发 GitHub Actions：
 
 ```bash
-git tag v0.2.0
-git push origin v0.2.0
+git tag v0.2.1
+git push origin v0.2.1
 ```
 
-工作流先在 Windows、macOS、Linux 上运行 Go 测试、Node.js 启动器测试和真实 npm 包安装/运行测试，通过后构建全部发布包并创建 GitHub Release。npm 测试在独立缓存中禁用网络和安装脚本，验证统一入口、两个子命令、兼容入口、退出码以及全局安装后清理缓存仍可运行。手动触发工作流只运行测试。带连字符的版本（例如 `v0.2.0-rc.1`）会标记为预发布。
+工作流先在 Windows、macOS、Linux 上运行 Go 测试、Node.js 启动器测试和真实 npm 包安装/运行测试，通过后构建全部发布包并创建 GitHub Release。npm 测试在独立缓存中禁用网络和安装脚本，验证统一入口、两个子命令、兼容入口、退出码以及全局安装后清理缓存仍可运行。手动触发工作流只运行测试。带连字符的版本（例如 `v0.2.1-rc.1`）会标记为预发布。
 
 需要发布到 npm registry 时，先确认包名的发布权限并完成 `npm login`，再使用 `npm publish <构建好的安装包.tgz> --access public` 发布；不能直接发布源码目录，因为其中没有内置二进制。当前 GitHub 工作流只向 GitHub Release 上传安装包。
 

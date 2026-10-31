@@ -26,17 +26,17 @@ func newCLIFlagSet(opts *cliOptions, output io.Writer) (*flag.FlagSet, *pkg.Byte
 	fs := flag.NewFlagSet("s3push", flag.ContinueOnError)
 	fs.SetOutput(output)
 	pkg.AddConnectionFlags(fs, &opts.Options)
-	fs.BoolVar(&opts.version, "version", false, "显示当前版本并退出")
-	fs.IntVar(&opts.concurrency, "concurrency", pkg.DefaultConcurrency, "并发分片数 `N`，范围 1-128")
-	fs.BoolVar(&opts.force, "force", false, "允许上传到非空目标目录并覆盖同名对象")
+	fs.BoolVar(&opts.version, "version", false, "Print version and exit")
+	fs.IntVar(&opts.concurrency, "concurrency", pkg.DefaultConcurrency, "Concurrent parts `N` (1-128)")
+	fs.BoolVar(&opts.force, "force", false, "Allow a non-empty destination prefix and overwrite matching objects")
 	partSize := &pkg.ByteSizeFlag{Value: pkg.DefaultPartSize}
-	fs.Var(partSize, "part-size", "分片大小 `SIZE`，例如 128MiB、1GiB")
+	fs.Var(partSize, "part-size", "Part size `SIZE` (e.g. 128MiB or 1GiB)")
 	fs.Usage = func() {
-		fmt.Fprintln(output, "用法:")
-		fmt.Fprintln(output, "  s3flow push [参数] <本地文件或目录> s3://bucket/key或prefix/")
-		fmt.Fprintln(output, "  s3push [参数] <本地文件或目录> s3://bucket/key或prefix/")
+		fmt.Fprintln(output, "Usage:")
+		fmt.Fprintln(output, "  s3flow push [flags] <local-path> s3://bucket/key-or-prefix/")
+		fmt.Fprintln(output, "  s3push [flags] <local-path> s3://bucket/key-or-prefix/")
 		fmt.Fprintln(output)
-		fmt.Fprintln(output, "参数（-flag 与 --flag 均可）:")
+		fmt.Fprintln(output, "Flags (both -flag and --flag are accepted):")
 		pkg.PrintGroupedFlags(output, fs)
 	}
 	return fs, partSize
@@ -67,7 +67,7 @@ func parseCLI(args []string) (cliOptions, error) {
 func validateCLI(opts cliOptions, size int64, args []string) (cliOptions, error) {
 	opts.partSize = size
 	if len(args) != 2 || opts.concurrency < 1 || opts.concurrency > pkg.MaxConcurrency || opts.partSize < 5<<20 || opts.partSize > 5<<30 {
-		return cliOptions{}, errors.New("需要本地路径和 S3 目标；并发数为 1-128，上传分片大小为 5MiB-5GiB")
+		return cliOptions{}, errors.New("A local path and an S3 destination are required; concurrency must be 1-128 and upload part size must be 5MiB-5GiB")
 	}
 	opts.source, opts.destination = args[0], args[1]
 	return opts, nil

@@ -21,7 +21,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 			printCLIUsage(stdout)
 			return 0
 		}
-		fmt.Fprintf(stderr, "参数错误: %v\n", err)
+		fmt.Fprintf(stderr, "Argument error: %v\n", err)
 		printCLIUsage(stderr)
 		return 2
 	}
@@ -38,7 +38,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 func runTransfer(opts cliOptions, stdout, stderr io.Writer) int {
 	bucket, files, err := planUpload(opts.source, opts.destination)
 	if err != nil {
-		fmt.Fprintf(stderr, "参数错误: %v\n", err)
+		fmt.Fprintf(stderr, "Argument error: %v\n", err)
 		return 2
 	}
 	cfg, err := resolveConfig(opts)

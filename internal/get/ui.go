@@ -1,4 +1,4 @@
-package main
+package get
 
 import (
 	"context"
@@ -27,13 +27,15 @@ var (
 	helpStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("#626262"))
 )
 
-type uploadModel struct {
+type downloadModel struct {
 	fileTransferred, fileTotal int64
 	parts                      []partProgress
 	height                     int
-	client                     uploadAPI
-	request                    uploadRequest
-	events                     chan uploadProgress
+	currentFile                string
+	completedFiles, totalFiles int
+	client                     s3API
+	request                    downloadRequest
+	events                     chan downloadProgress
 	progress                   progress.Model
 
 	ctx    context.Context
@@ -41,12 +43,8 @@ type uploadModel struct {
 
 	width                 int
 	stage                 string
-	uploaded              int64
+	downloaded            int64
 	total                 int64
-	currentFile           string
-	destination           string
-	completedFiles        int
-	totalFiles            int
 	completedParts        int
 	totalParts            int
 	startedAt             time.Time
@@ -58,17 +56,11 @@ type uploadModel struct {
 	progressSyncScheduled bool
 }
 
-type uploadEventsClosedMsg struct{}
-type refreshTaskListMsg struct{}
-
-func refreshTaskListCmd() tea.Cmd {
-	return tea.Tick(200*time.Millisecond, func(time.Time) tea.Msg { return refreshTaskListMsg{} })
-}
-
+type downloadEventsClosedMsg struct{}
 type exitAfterCompletionMsg struct{}
 type syncAnimatedProgressMsg struct{}
 
-func newUploadModel(client uploadAPI, request uploadRequest) uploadModel {
+func newDownloadModel(client s3API, request downloadRequest) downloadModel {
 	ctx, cancel := context.WithCancel(context.Background())
 	bar := progress.New(
 		progress.WithWidth(56),
@@ -76,29 +68,40 @@ func newUploadModel(client uploadAPI, request uploadRequest) uploadModel {
 		progress.WithFillCharacters(progress.DefaultFullCharFullBlock, '█'),
 		progress.WithSpringOptions(20, 0.85),
 	)
-	return uploadModel{
+	return downloadModel{
 		client:    client,
 		request:   request,
-		events:    make(chan uploadProgress, 32),
+		events:    make(chan downloadProgress, 32),
 		progress:  bar,
 		ctx:       ctx,
 		cancel:    cancel,
 		width:     80,
 		height:    30,
-		stage:     "准备上传",
+		stage:     "准备下载",
 		startedAt: time.Now(),
 	}
 }
 
-func (m uploadModel) Init() tea.Cmd {
-	return tea.Batch(waitUploadProgressCmd(m.events), refreshTaskListCmd())
+func (m downloadModel) Init() tea.Cmd {
+	return tea.Batch(
+		startDownloadCmd(m.ctx, m.client, m.request, m.events),
+		waitDownloadProgressCmd(m.events),
+		refreshTaskListCmd(),
+	)
 }
 
-func waitUploadProgressCmd(events <-chan uploadProgress) tea.Cmd {
+func startDownloadCmd(ctx context.Context, client s3API, request downloadRequest, events chan downloadProgress) tea.Cmd {
+	return func() tea.Msg {
+		runDownload(ctx, client, request, events)
+		return nil
+	}
+}
+
+func waitDownloadProgressCmd(events <-chan downloadProgress) tea.Cmd {
 	return func() tea.Msg {
 		message, ok := <-events
 		if !ok {
-			return uploadEventsClosedMsg{}
+			return downloadEventsClosedMsg{}
 		}
 		return message
 	}
@@ -112,7 +115,7 @@ func syncAnimatedProgressCmd() tea.Cmd {
 	})
 }
 
-func (m uploadModel) Update(message tea.Msg) (tea.Model, tea.Cmd) {
+func (m downloadModel) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	switch message := message.(type) {
 	case refreshTaskListMsg:
 		if m.done {
@@ -139,14 +142,20 @@ func (m uploadModel) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
-	case uploadProgress:
+	case downloadProgress:
 		m.fileTransferred, m.fileTotal = message.fileTransferred, message.fileTotal
+		if message.recursive {
+			m.request.recursive = true
+		}
+		if message.sourceDisplay != "" {
+			m.request.sourceDisplay = message.sourceDisplay
+		}
 		m.parts = message.parts
-		m.currentFile, m.destination = message.currentFile, message.destination
+		m.currentFile = message.currentFile
 		m.completedFiles, m.totalFiles = message.completedFiles, message.totalFiles
 		m.stage = message.stage
 		m.total = message.total
-		m.uploaded = message.uploaded
+		m.downloaded = message.downloaded
 		m.totalParts = message.totalParts
 		m.completedParts = message.completedParts
 		percent := m.percent()
@@ -172,9 +181,9 @@ func (m uploadModel) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if !m.progressSyncScheduled {
 			m.progressSyncScheduled = true
-			return m, tea.Batch(syncAnimatedProgressCmd(), waitUploadProgressCmd(m.events))
+			return m, tea.Batch(syncAnimatedProgressCmd(), waitDownloadProgressCmd(m.events))
 		}
-		return m, waitUploadProgressCmd(m.events)
+		return m, waitDownloadProgressCmd(m.events)
 
 	case syncAnimatedProgressMsg:
 		m.progressSyncScheduled = false
@@ -188,12 +197,12 @@ func (m uploadModel) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.progress, command = m.progress.Update(message)
 		return m, command
 
-	case uploadEventsClosedMsg:
+	case downloadEventsClosedMsg:
 		if !m.done {
 			m.done = true
 			m.finishedAt = time.Now()
-			m.err = errors.New("上传任务意外结束")
-			m.stage = "上传失败"
+			m.err = errors.New("下载任务意外结束")
+			m.stage = "下载失败"
 		}
 		return m, tea.Quit
 
@@ -203,19 +212,26 @@ func (m uploadModel) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m uploadModel) View() tea.View {
+func (m downloadModel) View() tea.View {
 	var builder strings.Builder
-	builder.WriteString(titleStyle.Render("s3push · 并发分片上传"))
+	builder.WriteString(titleStyle.Render("s3get · 并发分片下载"))
 	builder.WriteString("\n\n")
-	writeDetail(&builder, "文件", fmt.Sprintf("%q", m.currentFile))
-	writeDetail(&builder, "目标", m.destination)
-	writeDetail(&builder, "数量", fmt.Sprintf("%d/%d", m.completedFiles, m.totalFiles))
+	source := m.request.sourceDisplay
+	if source == "" {
+		source = fmt.Sprintf("s3://%s/%s", m.request.bucket, m.request.key)
+	}
+	writeDetail(&builder, "对象", source)
+	writeDetail(&builder, "输出", m.request.destination)
+	if m.request.recursive {
+		writeDetail(&builder, "文件", fmt.Sprintf("%q", m.currentFile))
+		writeDetail(&builder, "数量", fmt.Sprintf("%d/%d", m.completedFiles, m.totalFiles))
+	}
 	writeDetail(&builder, "分片", fmt.Sprintf("%d/%d · 并发 %d", m.completedParts, m.totalParts, m.request.concurrency))
 	builder.WriteString("\n")
 	builder.WriteString(labelStyle.Render("整体进度") + "\n")
 	builder.WriteString(m.progress.View())
 	builder.WriteString("\n")
-	builder.WriteString(fmt.Sprintf("%s / %s", pkg.FormatBytes(m.uploaded), pkg.FormatBytes(m.total)))
+	builder.WriteString(fmt.Sprintf("%s / %s", pkg.FormatBytes(m.downloaded), pkg.FormatBytes(m.total)))
 	speed := m.bytesPerSecond()
 	if speed > 0 {
 		builder.WriteString(fmt.Sprintf("  %s/s", pkg.FormatBytes(speed)))
@@ -227,7 +243,10 @@ func (m uploadModel) View() tea.View {
 	}
 	builder.WriteString("\n\n")
 	if m.currentFile != "" && !m.done {
-		percent := m.filePercent()
+		percent := float64(0)
+		if m.fileTotal > 0 {
+			percent = float64(m.fileTransferred) / float64(m.fileTotal)
+		}
 		builder.WriteString(labelStyle.Render("当前文件") + "\n")
 		builder.WriteString(m.progress.ViewAs(max(0, min(1, percent))))
 		fmt.Fprintf(&builder, "\n%s / %s\n\n", pkg.FormatBytes(m.fileTransferred), pkg.FormatBytes(m.fileTotal))
@@ -236,11 +255,11 @@ func (m uploadModel) View() tea.View {
 	case m.err != nil && !errors.Is(m.err, context.Canceled):
 		builder.WriteString(errorStyle.Render(fmt.Sprintf("失败 · %s · 耗时 %s", m.err.Error(), formatDuration(m.elapsed()))))
 	case m.done && m.err == nil:
-		builder.WriteString(successStyle.Render(fmt.Sprintf("完成 · 文件已上传 · 耗时 %s", formatDuration(m.elapsed()))))
+		builder.WriteString(successStyle.Render(fmt.Sprintf("完成 · 文件已保存 · 耗时 %s", formatDuration(m.elapsed()))))
 	case m.done && errors.Is(m.err, context.Canceled):
 		builder.WriteString(labelStyle.Render(fmt.Sprintf("已取消 · 耗时 %s", formatDuration(m.elapsed()))))
 	case m.cancelling:
-		builder.WriteString(labelStyle.Render("正在取消并清理未完成上传…"))
+		builder.WriteString(labelStyle.Render("正在取消并清理临时文件…"))
 	default:
 		builder.WriteString(labelStyle.Render(m.stage))
 	}
@@ -256,7 +275,7 @@ func (m uploadModel) View() tea.View {
 		lines[i] = ansi.Truncate(line, max(1, m.width-1), "…")
 	}
 	view := tea.NewView(strings.Join(lines, "\n"))
-	view.WindowTitle = "s3push"
+	view.WindowTitle = "s3get"
 	return view
 }
 
@@ -267,28 +286,25 @@ func writeDetail(builder *strings.Builder, label, value string) {
 	builder.WriteByte('\n')
 }
 
-func (m uploadModel) percent() float64 {
+func (m downloadModel) percent() float64 {
 	if m.total <= 0 {
-		if m.totalFiles > 0 {
-			return max(0, min(1, float64(m.completedFiles)/float64(m.totalFiles)))
-		}
 		return 0
 	}
-	value := float64(m.uploaded) / float64(m.total)
+	value := float64(m.downloaded) / float64(m.total)
 	return max(0, min(1, value))
 }
 
-func (m uploadModel) bytesPerSecond() int64 {
+func (m downloadModel) bytesPerSecond() int64 {
 	elapsed := m.elapsed().Seconds()
-	if elapsed <= 0 || m.uploaded <= 0 {
+	if elapsed <= 0 || m.downloaded <= 0 {
 		return 0
 	}
-	return int64(float64(m.uploaded) / elapsed)
+	return int64(float64(m.downloaded) / elapsed)
 }
 
-// elapsed returns the upload runtime, frozen when a terminal progress event
+// elapsed returns the download runtime, frozen when a terminal progress event
 // arrives so the UI exit delay is not included.
-func (m uploadModel) elapsed() time.Duration {
+func (m downloadModel) elapsed() time.Duration {
 	end := time.Now()
 	if !m.finishedAt.IsZero() {
 		end = m.finishedAt
@@ -299,11 +315,11 @@ func (m uploadModel) elapsed() time.Duration {
 	return end.Sub(m.startedAt)
 }
 
-func (m uploadModel) eta(speed int64) time.Duration {
-	if speed <= 0 || m.total <= m.uploaded {
+func (m downloadModel) eta(speed int64) time.Duration {
+	if speed <= 0 || m.total <= m.downloaded {
 		return 0
 	}
-	return time.Duration(float64(m.total-m.uploaded) / float64(speed) * float64(time.Second))
+	return time.Duration(float64(m.total-m.downloaded) / float64(speed) * float64(time.Second))
 }
 
 func formatDuration(value time.Duration) string {
@@ -320,14 +336,8 @@ func formatDuration(value time.Duration) string {
 	return fmt.Sprintf("%dm%02ds", minutes, seconds)
 }
 
-// Zero-byte files complete when S3 acknowledges the upload, even though
-// their byte count never changes.
-func (m uploadModel) filePercent() float64 {
-	if m.fileTotal > 0 {
-		return max(0, min(1, float64(m.fileTransferred)/float64(m.fileTotal)))
-	}
-	if m.totalParts > 0 && m.completedParts >= m.totalParts {
-		return 1
-	}
-	return 0
+type refreshTaskListMsg struct{}
+
+func refreshTaskListCmd() tea.Cmd {
+	return tea.Tick(200*time.Millisecond, func(time.Time) tea.Msg { return refreshTaskListMsg{} })
 }

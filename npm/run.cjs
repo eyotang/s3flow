@@ -5,8 +5,8 @@ const { spawn } = require('node:child_process');
 const { constants } = require('node:os');
 
 function binaryPath(command, platform = process.platform, arch = process.arch) {
-  if (!['s3get', 's3push'].includes(command)) {
-    throw new Error(`Unknown command: ${command}. Use s3get or s3push.`);
+  if (command !== 's3flow') {
+    throw new Error(`Unknown command: ${command}. Use get or push (aliases: s3get, s3push).`);
   }
   if (!['win32', 'darwin', 'linux'].includes(platform) || !['x64', 'arm64'].includes(arch)) {
     throw new Error(`Unsupported platform: ${platform}/${arch}. Supported: Windows, macOS, Linux on x64 or arm64.`);
@@ -17,7 +17,12 @@ function binaryPath(command, platform = process.platform, arch = process.arch) {
 function run(command, args) {
   let executable;
   try {
-    executable = binaryPath(command);
+    if (command === 's3get' || command === 's3push') {
+      args = [command === 's3get' ? 'get' : 'push', ...args];
+    } else if (command !== 's3flow') {
+      throw new Error(`Unknown command: ${command}`);
+    }
+    executable = binaryPath('s3flow');
   } catch (error) {
     console.error(`s3flow: ${error.message}`);
     process.exitCode = 1;

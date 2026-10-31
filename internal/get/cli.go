@@ -1,4 +1,4 @@
-package main
+package get
 
 import (
 	"errors"
@@ -56,8 +56,11 @@ func parseCLI(args []string) (cliOptions, error) {
 			opts.AWSProfileExplicit = true
 		}
 	})
-	opts.partSize = partSize.Value
-	positionals := fs.Args()
+	return validateCLI(opts, partSize.Value, fs.Args())
+}
+
+func validateCLI(opts cliOptions, size int64, positionals []string) (cliOptions, error) {
+	opts.partSize = size
 	if len(positionals) < 1 || len(positionals) > 2 {
 		return cliOptions{}, errors.New("用法: s3get [参数] <s3://bucket/key|预签名URL> [输出文件]")
 	}
@@ -102,11 +105,12 @@ func newCLIFlagSet(opts *cliOptions, output io.Writer) (*flag.FlagSet, *pkg.Byte
 	fs.Var(partSize, "part-size", "分片大小 `SIZE`，例如 128MiB、1GiB")
 	fs.Usage = func() {
 		fmt.Fprintln(output, "用法:")
+		fmt.Fprintln(output, "  s3flow get [参数] s3://bucket/key [输出文件]")
 		fmt.Fprintln(output, "  s3get [参数] s3://bucket/key [输出文件]")
 		fmt.Fprintln(output, "  s3get [参数] 'https://Endpoint/bucket/key?预签名参数' [输出文件]")
 		fmt.Fprintln(output)
 		fmt.Fprintln(output, "参数（-flag 与 --flag 均可）:")
-		fs.PrintDefaults()
+		pkg.PrintGroupedFlags(output, fs)
 	}
 	return fs, partSize
 }

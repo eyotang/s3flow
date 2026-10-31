@@ -31,7 +31,7 @@ func TestUpdateReplacesRunningExecutableAndExits(t *testing.T) {
 		gz := gzip.NewWriter(&archive)
 		tw := tar.NewWriter(gz)
 		content := []byte("updated executable")
-		tw.WriteHeader(&tar.Header{Name: "release/s3get", Mode: 0755, Size: int64(len(content))})
+		tw.WriteHeader(&tar.Header{Name: "release/s3flow", Mode: 0755, Size: int64(len(content))})
 		tw.Write(content)
 		tw.Close()
 		gz.Close()
@@ -47,12 +47,12 @@ func TestUpdateReplacesRunningExecutableAndExits(t *testing.T) {
 		})}
 		r := release{Tag: "v1.2.3", Assets: []asset{{Name: "checksums.txt", URL: api + "/checksums"}, {Name: name, URL: api + "/archive"}}}
 		report, finish := showProgress(io.Discard)
-		err := install(context.Background(), client, r, "", "s3get", report)
+		err := install(context.Background(), client, r, "", "s3flow", report)
 		finish()
 		if err != nil {
 			t.Fatal(err)
 		}
-		fmt.Println("更新完成，请重新运行 s3get")
+		fmt.Println("更新完成，请重新运行 s3flow")
 		return
 	}
 	original, err := os.Executable()
@@ -75,7 +75,7 @@ func TestUpdateReplacesRunningExecutableAndExits(t *testing.T) {
 	if err != nil {
 		t.Fatalf("updater did not exit successfully: %v\n%s", err, output)
 	}
-	if !strings.Contains(string(output), "更新完成，请重新运行 s3get") {
+	if !strings.Contains(string(output), "更新完成，请重新运行 s3flow") {
 		t.Fatalf("missing completion: %s", output)
 	}
 	installed, err := os.ReadFile(executable)

@@ -5,13 +5,19 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/eyotang/s3flow/internal/update"
 	"io"
 	"os"
 
 	tea "charm.land/bubbletea/v2"
 )
 
-func main() { os.Exit(run(os.Args[1:], os.Stdout, os.Stderr)) }
+func main() {
+	if update.BeforeRun("s3get") {
+		return
+	}
+	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
+}
 
 func run(args []string, stdout, stderr io.Writer) int {
 	options, err := parseCLI(args)

@@ -7,12 +7,18 @@ import (
 	"flag"
 	"fmt"
 	"github.com/eyotang/s3flow/internal/pkg"
+	"github.com/eyotang/s3flow/internal/update"
 	"io"
 	"os"
 	"strings"
 )
 
-func main() { os.Exit(run(os.Args[1:], os.Stdout, os.Stderr)) }
+func main() {
+	if update.BeforeRun("s3push") {
+		return
+	}
+	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
+}
 
 // run runs the independent s3push command.
 func run(args []string, stdout, stderr io.Writer) int {

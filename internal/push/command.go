@@ -13,16 +13,16 @@ import (
 func NewCommand() *cobra.Command {
 	opts := defaultCLIOptions()
 	fs, size := newCLIFlagSet(&opts, io.Discard)
-	cmd := &cobra.Command{Use: "push [参数] <本地文件或目录> <s3://bucket/key>", Aliases: []string{"s3push"}, Short: "上传本地文件或目录到 S3", Version: update.Version}
+	cmd := &cobra.Command{Use: "push [flags] <local-path> <s3://bucket/key>", Aliases: []string{"s3push"}, Short: "Upload local files or directories to S3", Version: update.Version}
 	pkg.AddCobraFlags(cmd.Flags(), fs)
 	cmd.InitDefaultHelpFlag()
-	cmd.Flags().Lookup("help").Usage = "显示帮助并退出"
+	cmd.Flags().Lookup("help").Usage = "Show help and exit"
 	cmd.SetVersionTemplate("{{.CommandPath}} {{.Version}}\n")
 	cmd.SetHelpFunc(func(c *cobra.Command, _ []string) {
 		output := c.OutOrStdout()
-		fmt.Fprintln(output, "用法:")
-		fmt.Fprintln(output, "  s3flow push [参数] <本地文件或目录> <s3://bucket/key>")
-		fmt.Fprintln(output, "\n参数（-p、-o、-r 等短参数与 --flag 长参数）:")
+		fmt.Fprintln(output, "Usage:")
+		fmt.Fprintln(output, "  s3flow push [flags] <local-path> <s3://bucket/key>")
+		fmt.Fprintln(output, "\nFlags (long: --name; short: -p):")
 		pkg.PrintGroupedCobraFlags(output, c.Flags())
 	})
 	cmd.Args = func(c *cobra.Command, args []string) error {

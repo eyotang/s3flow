@@ -18,7 +18,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 			printCLIUsage(stdout)
 			return 0
 		}
-		fmt.Fprintf(stderr, "参数错误: %v\n\n", err)
+		fmt.Fprintf(stderr, "Argument error: %v\n\n", err)
 		printCLIUsage(stderr)
 		return 2
 	}

@@ -21,9 +21,9 @@ func TestRunHelpPrintsUsageAndExitsSuccessfully(t *testing.T) {
 				t.Fatalf("expected help not to write stderr, got:\n%s", stderr.String())
 			}
 			for _, want := range []string{
-				"用法:\n  s3flow get [参数] s3://bucket/key [输出文件]",
-				"s3get [参数] 'https://Endpoint/bucket/key?预签名参数' [输出文件]",
-				"参数（-flag 与 --flag 均可）:",
+				"Usage:\n  s3flow get [flags] s3://bucket/key [output]",
+				"s3get [flags] 'https://Endpoint/bucket/key?presigned-parameters' [output]",
+				"Flags (both -flag and --flag are accepted):",
 				"-aws DIR",
 				"-Endpoint URL",
 				"-p NAME",
@@ -51,9 +51,9 @@ func TestRunInvalidFlagPrintsErrorAndUsageToStderr(t *testing.T) {
 		t.Fatalf("expected invalid arguments not to write stdout, got:\n%s", stdout.String())
 	}
 	for _, want := range []string{
-		"参数错误: flag provided but not defined: -does-not-exist",
-		"用法:\n  s3flow get [参数] s3://bucket/key [输出文件]",
-		"参数（-flag 与 --flag 均可）:",
+		"Argument error: flag provided but not defined: -does-not-exist",
+		"Usage:\n  s3flow get [flags] s3://bucket/key [output]",
+		"Flags (both -flag and --flag are accepted):",
 		"-aws DIR",
 		"-Endpoint URL",
 		"-profile NAME",

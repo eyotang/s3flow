@@ -23,7 +23,7 @@ func TestGroupedHelpPreservesFlagsAndDefaults(t *testing.T) {
 	var output bytes.Buffer
 	PrintGroupedFlags(&output, fs)
 	help := output.String()
-	headings := []string{"连接配置:", "身份凭据:", "传输设置:", "文件操作:", "通用参数:"}
+	headings := []string{"Connection:", "Credentials:", "Transfer:", "Files:", "General:"}
 	last := -1
 	for _, heading := range headings {
 		position := strings.Index(help, heading)

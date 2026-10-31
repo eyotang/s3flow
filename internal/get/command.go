@@ -13,16 +13,16 @@ import (
 func NewCommand() *cobra.Command {
 	opts := defaultCLIOptions()
 	fs, size := newCLIFlagSet(&opts, io.Discard)
-	cmd := &cobra.Command{Use: "get [参数] <s3://bucket/key|预签名URL> [输出文件]", Aliases: []string{"s3get"}, Short: "下载 S3 文件或目录", Version: update.Version}
+	cmd := &cobra.Command{Use: "get [flags] <s3://bucket/key|presigned-url> [output]", Aliases: []string{"s3get"}, Short: "Download S3 files or directories", Version: update.Version}
 	pkg.AddCobraFlags(cmd.Flags(), fs)
 	cmd.InitDefaultHelpFlag()
-	cmd.Flags().Lookup("help").Usage = "显示帮助并退出"
+	cmd.Flags().Lookup("help").Usage = "Show help and exit"
 	cmd.SetVersionTemplate("{{.CommandPath}} {{.Version}}\n")
 	cmd.SetHelpFunc(func(c *cobra.Command, _ []string) {
 		output := c.OutOrStdout()
-		fmt.Fprintln(output, "用法:")
-		fmt.Fprintln(output, "  s3flow get [参数] <s3://bucket/key|预签名URL> [输出文件]")
-		fmt.Fprintln(output, "\n参数（-p、-o、-r 等短参数与 --flag 长参数）:")
+		fmt.Fprintln(output, "Usage:")
+		fmt.Fprintln(output, "  s3flow get [flags] <s3://bucket/key|presigned-url> [output]")
+		fmt.Fprintln(output, "\nFlags (long: --name; short: -p):")
 		pkg.PrintGroupedCobraFlags(output, c.Flags())
 	})
 	cmd.Args = func(c *cobra.Command, args []string) error {

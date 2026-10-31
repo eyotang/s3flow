@@ -1,4 +1,4 @@
-package main
+package push
 
 import (
 	"bytes"
@@ -15,7 +15,7 @@ func TestVersion(t *testing.T) {
 		t.Run(flag, func(t *testing.T) {
 			var stdout, stderr bytes.Buffer
 			code := run([]string{flag}, &stdout, &stderr)
-			if code != 0 || stdout.String() != "s3get v1.2.3\n" || stderr.Len() != 0 {
+			if code != 0 || stdout.String() != "s3push v1.2.3\n" || stderr.Len() != 0 {
 				t.Fatalf("code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 			}
 		})

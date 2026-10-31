@@ -1,4 +1,4 @@
-package main
+package get
 
 import (
 	"bytes"
@@ -21,7 +21,7 @@ func TestRunHelpPrintsUsageAndExitsSuccessfully(t *testing.T) {
 				t.Fatalf("expected help not to write stderr, got:\n%s", stderr.String())
 			}
 			for _, want := range []string{
-				"用法:\n  s3get [参数] s3://bucket/key [输出文件]",
+				"用法:\n  s3flow get [参数] s3://bucket/key [输出文件]",
 				"s3get [参数] 'https://Endpoint/bucket/key?预签名参数' [输出文件]",
 				"参数（-flag 与 --flag 均可）:",
 				"-aws DIR",
@@ -52,7 +52,7 @@ func TestRunInvalidFlagPrintsErrorAndUsageToStderr(t *testing.T) {
 	}
 	for _, want := range []string{
 		"参数错误: flag provided but not defined: -does-not-exist",
-		"用法:\n  s3get [参数] s3://bucket/key [输出文件]",
+		"用法:\n  s3flow get [参数] s3://bucket/key [输出文件]",
 		"参数（-flag 与 --flag 均可）:",
 		"-aws DIR",
 		"-Endpoint URL",

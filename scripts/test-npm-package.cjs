@@ -35,7 +35,7 @@ try {
     }
     const native = path.join(stage, 'npm', 'native', `${process.platform}-${process.arch}`);
     fs.mkdirSync(native, { recursive: true });
-    for (const command of ['s3get', 's3push']) {
+    for (const command of ['s3flow']) {
       const binary = path.join(native, command + (process.platform === 'win32' ? '.exe' : ''));
       const result = execute('go', ['build', '-o', binary, `./cmd/${command}`]);
       assert.equal(result.status, 0, result.stderr);
@@ -57,15 +57,32 @@ try {
     const inferred = execute(process.execPath, [npmCLI, 'exec', '--yes', '--offline', '--ignore-scripts', '--', `file:${tarball}`, command, '--help'], { cwd: temp, env });
     assert.equal(inferred.status, 0, inferred.stderr);
     assert.match(inferred.stdout + inferred.stderr, /-concurrency N/);
-    for (const args of [[command, '--help'], ['s3flow', command, '--help']]) {
+    const subcommand = command === 's3get' ? 'get' : 'push';
+    for (const args of [[command, '--help'], ['s3flow', command, '--help'], ['s3flow', subcommand, '--help']]) {
       const result = npmExec(args);
       assert.equal(result.status, 0, result.stderr);
       assert.match(result.stdout + result.stderr, /-concurrency N/);
+      assert.ok(result.stdout.includes(`s3flow ${subcommand} [参数]`), 'Dispatched to the wrong native command');
     }
+    const version = npmExec(['s3flow', subcommand, '--version']);
+    assert.equal(version.status, 0, version.stderr);
+    assert.ok(version.stdout.startsWith(`s3flow ${subcommand} `), version.stdout);
     const invalid = npmExec([command, '--not-a-real-option']);
     assert.notEqual(invalid.status, 0, 'Native failures must propagate through npx');
     assert.match(invalid.stdout + invalid.stderr, /not-a-real-option/);
+    const invalidSubcommand = npmExec(['s3flow', subcommand, '--not-a-real-option']);
+    assert.equal(invalidSubcommand.status, invalid.status);
+    assert.match(invalidSubcommand.stderr, /not-a-real-option/);
   }
+  const rootHelp = npmExec(['s3flow', '--help']);
+  assert.equal(rootHelp.status, 0, rootHelp.stderr);
+  assert.match(rootHelp.stdout, /get/);
+  assert.match(rootHelp.stdout, /push/);
+  const rootVersion = npmExec(['s3flow', '--version']);
+  assert.equal(rootVersion.status, 0, rootVersion.stderr);
+  assert.match(rootVersion.stdout, /^s3flow /);
+  const unknown = npmExec(['s3flow', 'unknown']);
+  assert.equal(unknown.status, 2);
   const prefix = path.join(temp, 'global install');
   const installed = npmExec(['s3flow', 'install', '--prefix', prefix]);
   assert.equal(installed.status, 0, installed.stdout + installed.stderr);
@@ -81,6 +98,13 @@ try {
     const result = execute(process.execPath, [path.join(installedRoot, 'npm', `${command}.cjs`), '--help'], { cwd: temp });
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout + result.stderr, /-concurrency N/);
+  }
+  const unifiedShim = process.platform === 'win32' ? path.join(prefix, 's3flow.cmd') : path.join(prefix, 'bin', 's3flow');
+  assert.ok(fs.existsSync(unifiedShim), 'Missing global s3flow entrypoint');
+  for (const subcommand of ['get', 'push']) {
+    const result = execute(process.execPath, [path.join(installedRoot, 'npm', 'cli.cjs'), subcommand, '--help'], { cwd: temp });
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /-concurrency N/);
   }
   console.log(`npm package smoke tests passed on ${process.platform}/${process.arch}`);
 } finally {

@@ -1,7 +1,7 @@
 {
   "name": "@eyotang/s3flow",
-  "version": "0.1.6",
-  "description": "Cross-platform S3 download and upload tools: s3get and s3push",
+  "version": "0.2.0",
+  "description": "Cross-platform S3 CLI: s3flow get and s3flow push",
   "license": "MIT",
   "publishConfig": { "access": "public", "registry": "https://registry.npmjs.org" },
   "repository": { "type": "git", "url": "git+https://github.com/eyotang/s3flow.git" },

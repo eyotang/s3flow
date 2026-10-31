@@ -83,6 +83,10 @@ func newer(candidate, current string) bool {
 }
 
 func get(ctx context.Context, client *http.Client, url, token, accept string, limit int64) ([]byte, error) {
+	return getWithProgress(ctx, client, url, token, accept, limit, nil)
+}
+
+func getWithProgress(ctx context.Context, client *http.Client, url, token, accept string, limit int64, report func(int64, int64)) ([]byte, error) {
 	if !strings.HasPrefix(url, "https://api.github.com/") {
 		return nil, fmt.Errorf("无效的 Release 地址")
 	}
@@ -97,13 +101,18 @@ func get(ctx context.Context, client *http.Client, url, token, accept string, li
 	}
 	response, err := client.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, downloadError(err)
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("GitHub HTTP %d", response.StatusCode)
+		return nil, responseError(response.StatusCode)
 	}
-	data, err := io.ReadAll(io.LimitReader(response.Body, limit+1))
+	var body io.Reader = response.Body
+	if report != nil {
+		report(0, response.ContentLength)
+		body = &progressReader{Reader: body, total: response.ContentLength, report: report}
+	}
+	data, err := io.ReadAll(io.LimitReader(body, limit+1))
 	if err != nil {
 		return nil, err
 	}
@@ -151,15 +160,18 @@ func BeforeRun(command string) bool {
 	}
 	installCtx, stop := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer stop()
-	if err := install(installCtx, client, r, token, command); err != nil {
+	report, finish := showProgress(os.Stderr)
+	err = install(installCtx, client, r, token, command, report)
+	finish()
+	if err != nil {
 		fmt.Fprintf(os.Stderr, "更新失败：%v；继续使用当前版本。\n", err)
 		return false
 	}
-	fmt.Fprintf(os.Stderr, "已更新至 %s，请重新运行本次命令。\n", r.Tag)
+	fmt.Fprintf(os.Stderr, "更新完成：%s。本次命令即将退出，请重新运行 %s 以使用新版本。\n", r.Tag, command)
 	return true
 }
 
-func install(ctx context.Context, client *http.Client, r release, token, command string) error {
+func install(ctx context.Context, client *http.Client, r release, token, command string, report func(string, int64, int64)) error {
 	extension := ".tar.gz"
 	binary := command
 	if runtime.GOOS == "windows" {
@@ -170,22 +182,26 @@ func install(ctx context.Context, client *http.Client, r release, token, command
 	download := func(name string, limit int64) ([]byte, error) {
 		for _, a := range r.Assets {
 			if a.Name == name {
-				return get(ctx, client, a.URL, token, "application/octet-stream", limit)
+				return downloadAsset(ctx, client, a, token, limit, report)
 			}
 		}
 		return nil, fmt.Errorf("Release 缺少 %s", name)
 	}
+	report("获取校验文件", 0, 0)
 	sums, err := download("checksums.txt", 1<<20)
 	if err != nil {
 		return err
 	}
+	report("下载更新包", 0, 0)
 	archive, err := download(archiveName, maxDownload)
 	if err != nil {
 		return err
 	}
+	report("校验更新包", 0, 0)
 	if err = verify(archive, sums, archiveName); err != nil {
 		return err
 	}
+	report("解压更新包", 0, 0)
 	contents, err := extract(archive, binary, extension == ".zip")
 	if err != nil {
 		return err
@@ -198,6 +214,7 @@ func install(ctx context.Context, client *http.Client, r release, token, command
 	if err != nil {
 		return err
 	}
+	report("安装更新", 0, 0)
 	return replace(executable, contents)
 }
 

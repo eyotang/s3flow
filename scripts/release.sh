@@ -34,7 +34,7 @@ for os in linux darwin windows; do
     mkdir -p "$package"
     suffix=""
     if [[ "$os" == windows ]]; then suffix=.exe; fi
-    for command in s3flow s3get s3push; do
+    for command in s3flow s3get s3push s3unzip; do
       echo "Building $command for $os/$arch"
       CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" go build \
         -trimpath -ldflags="-s -w -X github.com/eyotang/s3flow/internal/update.Version=$version" -o "$package/$command$suffix" "./cmd/$command"

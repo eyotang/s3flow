@@ -48,13 +48,14 @@ type ExitError int
 
 func (e ExitError) Error() string { return fmt.Sprintf("Command exited with status %d", int(e)) }
 
+// flagGroup assigns connection, transfer, file, and general options to help sections.
 func flagGroup(name string) int {
 	switch name {
 	case "Endpoint", "Region", "aws", "p", "profile", "path-style":
 		return 0
 	case "ak", "sk", "session-token":
 		return 1
-	case "concurrency", "part-size":
+	case "concurrency", "part-size", "download-concurrency", "upload-concurrency", "file-concurrency":
 		return 2
 	case "o", "output", "r", "recursive", "force":
 		return 3

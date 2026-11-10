@@ -1,6 +1,6 @@
 # s3flow
 
-`s3flow` 是原生统一入口：`s3flow get` 用于下载，`s3flow push` 用于上传文件或目录，共用 AWS 配置。两个子命令在同一进程中运行并共用配置与传输实现。保留 `s3get`、`s3push` 作为兼容入口，直接下载原生二进制也可使用 `s3flow`。
+`s3flow` 是原生统一入口：`s3flow get` 用于下载，`s3flow push` 用于上传文件或目录，`s3flow unzip` 将 S3 ZIP 流式解压到 S3。三个子命令共用 AWS 配置。提供 `s3get`、`s3push`、`s3unzip` 独立入口，直接下载原生二进制也可使用 `s3flow`。
 
 `s3get` 是一个基于 Bubble Tea 的 S3 并发分片下载工具。S3 URI 模式通过 `HeadObject` 获取对象大小，预签名 URL 模式通过 `GET bytes=0-0` 探测大小，随后自动规划 Range 分片并发下载；界面使用 Bubbles Animated Progress 展示实时进度、速度、剩余时间和最终耗时。
 
@@ -18,7 +18,7 @@ s3get --help
 s3push --help
 ```
 
-安装器使用 npm 的全局安装目录，安装统一入口和两个兼容命令。可指定可写目录：`npx @eyotang/s3flow@latest install --prefix <目录>`，并将输出提示中的命令目录加入 `PATH`。全局安装只保留当前平台的二进制，不依赖 npx 缓存；同一条安装命令可用于升级。已有 AWS 配置继续使用，不需要在安装时填写凭据。
+安装器使用 npm 的全局安装目录，安装统一入口和三个独立命令。可指定可写目录：`npx @eyotang/s3flow@latest install --prefix <目录>`，并将输出提示中的命令目录加入 `PATH`。全局安装只保留当前平台的二进制，不依赖 npx 缓存；同一条安装命令可用于升级。已有 AWS 配置继续使用，不需要在安装时填写凭据。
 
 临时使用而不进行全局安装：`npx @eyotang/s3flow@latest s3get --help` 或 `npx @eyotang/s3flow@latest s3push --help`。公开 npm 包内置二进制，不要求使用者访问私有 GitHub 仓库。
 
@@ -30,11 +30,13 @@ s3push --help
 s3flow --help
 s3flow get --help
 s3flow push --help
+s3flow unzip --help
 s3flow get s3://bucket/path/file.zip ./file.zip
 s3flow push ./data s3://bucket/backup/
+s3flow unzip s3://bucket/archive.zip s3://bucket/extracted/
 ```
 
-命令行帮助使用英文，按 Connection、Credentials、Transfer、Files、General 分区展示。子命令由 Cobra 解析参数，直接调用共享的 Go 传输与终端界面实现。长参数使用 `--flag`，短参数使用 `-p`、`-o`、`-r` 等形式，参数可放在路径前后。兼容 `s3flow s3get`、`s3flow s3push` 写法。临时使用可执行 `npx @eyotang/s3flow@latest get --help` 或 `npx @eyotang/s3flow@latest push --help`。
+命令行帮助使用英文，按 Connection、Credentials、Transfer、Files、General 分区展示。子命令由 Cobra 解析参数，直接调用共享的 Go 传输与终端界面实现。长参数使用 `--flag`，短参数使用 `-p`、`-o`、`-r` 等形式，参数可放在路径前后。兼容 `s3flow s3get`、`s3flow s3push`、`s3flow s3unzip` 写法。临时使用可执行 `npx @eyotang/s3flow@latest get --help` 或 `npx @eyotang/s3flow@latest push --help`。
 
 ### 查看当前版本
 
@@ -48,9 +50,9 @@ npx @eyotang/s3flow@latest --version
 
 ### 自动更新（GitHub Release）
 
-npm/npx 用于首次安装引导。正式发布的 `s3flow` 在执行 get/push 前自行检查 GitHub Release，与后续是否使用 npm 无关。检测（含私有仓库鉴权）的总时限为 1.5 秒，超时或失败跳过检测，继续执行原命令。
+npm/npx 用于首次安装引导。正式发布的 `s3flow` 在执行 get/push/unzip 前自行检查 GitHub Release，与后续是否使用 npm 无关。检测（含私有仓库鉴权）的总时限为 1.5 秒，超时或失败跳过检测，继续执行原命令。
 
-发现正式新版时显示版本号；交互终端中输入 `y` 或 `yes` 才下载当前系统与架构的 Release 压缩包，校验 `checksums.txt` 中的 SHA-256 后替换当前命令。确认更新后显示下载进度、已下载大小和平均速度，随后显示校验、解压与安装状态；等待网络响应期间仍持续刷新活动标记。网络超时、连接临时故障或服务器临时错误会最多尝试 3 次，间隔 1 秒、2 秒，整体仍受 5 分钟更新时限约束；失败提示不展示临时签名下载链接。更新成功后退出，请重新运行原命令；拒绝或检测失败则继续。统一入口更新同一个 `s3flow` 可执行文件，get/push 同时生效；独立兼容二进制仍分别更新。非交互环境仅提示，不等待输入。开发构建不检测更新。
+发现正式新版时显示版本号；交互终端中输入 `y` 或 `yes` 才下载当前系统与架构的 Release 压缩包，校验 `checksums.txt` 中的 SHA-256 后替换当前命令。确认更新后显示下载进度、已下载大小和平均速度，随后显示校验、解压与安装状态；等待网络响应期间仍持续刷新活动标记。网络超时、连接临时故障或服务器临时错误会最多尝试 3 次，间隔 1 秒、2 秒，整体仍受 5 分钟更新时限约束；失败提示不展示临时签名下载链接。更新成功后退出，请重新运行原命令；拒绝或检测失败则继续。统一入口更新同一个 `s3flow` 可执行文件，get/push/unzip 同时生效；独立兼容二进制仍分别更新。非交互环境仅提示，不等待输入。开发构建不检测更新。
 
 私有仓库需要具有仓库读取权限的 `GH_TOKEN` / `GITHUB_TOKEN`，或事先执行 `gh auth login`。没有权限时检测会跳过。更新文件需有当前安装目录的写权限，不会自动提权；更新失败时报告错误。GitHub Release 是后续版本与下载产物的唯一来源，无需重新发布 npm 包来更新已有安装。
 
@@ -80,7 +82,7 @@ GitHub Release 方式无需 npm 账号，不依赖 npm registry 中的同名包�
 
 ### 可选：直接下载二进制
 
-从 [GitHub Releases](https://github.com/eyotang/s3flow/releases/latest) 下载对应系统和 CPU 架构的压缩包。每个包都包含 `s3flow`、`s3get`、`s3push`、README 和许可证，无需安装 Go。
+从 [GitHub Releases](https://github.com/eyotang/s3flow/releases/latest) 下载对应系统和 CPU 架构的压缩包。每个包都包含 `s3flow`、`s3get`、`s3push`、`s3unzip`、README 和许可证，无需安装 Go。
 
 | 系统 | x86_64 / Intel / AMD | ARM64 |
 | --- | --- | --- |
@@ -88,7 +90,7 @@ GitHub Release 方式无需 npm 账号，不依赖 npm registry 中的同名包�
 | macOS | `s3flow_<版本>_darwin_amd64.tar.gz` | `s3flow_<版本>_darwin_arm64.tar.gz`（Apple Silicon） |
 | Linux | `s3flow_<版本>_linux_amd64.tar.gz` | `s3flow_<版本>_linux_arm64.tar.gz` |
 
-解压后可直接运行，或将程序放入 `PATH` 中的目录。Windows 统一入口为 `s3flow.exe`，另附 `s3get.exe` 和 `s3push.exe` 兼容入口。发布页提供 `checksums.txt`，macOS/Linux 可用 `shasum -a 256 <压缩包>`，Windows PowerShell 可用 `Get-FileHash <压缩包> -Algorithm SHA256`，与文件中的对应值比较。
+解压后可直接运行，或将程序放入 `PATH` 中的目录。Windows 统一入口为 `s3flow.exe`，另附 `s3get.exe`、`s3push.exe` 和 `s3unzip.exe` 独立入口。发布页提供 `checksums.txt`，macOS/Linux 可用 `shasum -a 256 <压缩包>`，Windows PowerShell 可用 `Get-FileHash <压缩包> -Algorithm SHA256`，与文件中的对应值比较。
 
 ## 构建
 
@@ -96,9 +98,10 @@ GitHub Release 方式无需 npm 账号，不依赖 npm registry 中的同名包�
 go build -o s3flow ./cmd/s3flow
 go build -o s3get ./cmd/s3get
 go build -o s3push ./cmd/s3push
+go build -o s3unzip ./cmd/s3unzip
 ```
 
-也可以使用 Makefile，产物位于 `bin/s3flow`、`bin/s3get` 和 `bin/s3push`：
+也可以使用 Makefile，产物位于 `bin/s3flow`、`bin/s3get`、`bin/s3push` 和 `bin/s3unzip`：
 
 ```bash
 make build
@@ -312,12 +315,42 @@ AWS_SECRET_ACCESS_KEY=your-secret-key \
 
 上传使用与下载一致的紫色 Bubble Tea 动态进度界面，显示当前文件、目标、已完成/总文件数、当前文件分片数、整体字节进度、平均速度和预计剩余时间，结束时显示耗时。界面以整体和当前文件两条进度条为主，未完成部分显示可见轨道，分片仅显示汇总，不逐条铺满屏幕。按 `q`、`esc` 或 `Ctrl+C` 取消并等待未完成分片清理。字节进度按请求体读取量估算，SDK 重试回卷时会回退，完成状态以服务端成功响应为准。上传支持上述 AWS 连接和认证参数，不支持下载专用的 `--output` 或预签名 GET URL。
 
+## S3 ZIP 流式解压
+
+```bash
+s3flow unzip -p production \
+  --download-concurrency 4 --upload-concurrency 8 \
+  --file-concurrency 2 --part-size 8MiB \
+  s3://source-bucket/backups/archive.zip s3://target-bucket/extracted/
+
+# 独立二进制 / npm 入口使用同样的参数
+s3unzip s3://source-bucket/archive.zip s3://target-bucket/extracted/
+```
+
+先通过 Range 读取 ZIP 尾部索引，再按条目分片并行下载压缩数据，按顺序解压，并将解压数据分片并行上传。整个 ZIP 和解压文件均无需落盘，大文件无需全部解压完即可开始上传。保留 ZIP 内部目录结构，跳过空目录，空文件上传为零字节对象。每完成一个文件输出目标地址。
+
+| 参数 | 默认值 | 含义 |
+| --- | --- | --- |
+| `--concurrency` | 4 | 下载和上传并发数的默认值 |
+| `--download-concurrency` | 跟随 concurrency | 全局并发 Range 请求数 |
+| `--upload-concurrency` | 跟随 concurrency | 全局并发上传请求数 |
+| `--file-concurrency` | 2 | 同时解压处理的条目数 |
+| `--part-size` | 8MiB | 下载与上传分片大小，允许 5MiB–5GiB |
+| `--force` | false | 允许非空目标前缀，并覆盖同名对象 |
+
+所有并发数范围为 1–128。下载每个条目最多缓冲 download-concurrency 个分片，上传缓冲由全局 upload-concurrency 限制；主要数据缓冲上界约为 `(file-concurrency × download-concurrency + upload-concurrency) × part-size`，默认约 96MiB，不含 SDK、解压器和 ZIP 索引开销。超大解压条目会自动增大上传分片以满足最多 10000 片的限制，此时上传缓冲也会相应增大。
+
+支持 Store、Deflate 和 ZIP64；不支持加密、符号链接、特殊文件、不安全路径或重复目标文件。源 S3 必须支持 Range，并提供强 ETag 或版本号以固定源对象；读取失败最多尝试 3 次。源与目标共用 endpoint、凭据和 region，可位于不同桶。目的地址始终作为前缀，省略末尾 `/` 时自动补齐。
+
+默认先检查目标前缀为空，并使用条件写入防止覆盖；`--force` 允许覆盖，但始终禁止覆盖源 ZIP。每个对象提交前校验解压大小与 CRC。失败或 Ctrl+C 时取消工作并中止未完成的 multipart 上传；清理失败会一并报告。已成功提交的文件会保留，整个解压操作不提供跨对象事务回滚。
+
 ## 代码结构
 
-- `cmd/s3flow/`：Cobra 根命令、get/push 子命令装配、自更新入口与退出码。
-- `cmd/s3get/`、`cmd/s3push/`：独立兼容入口。
+- `cmd/s3flow/`：Cobra 根命令、get/push/unzip 子命令装配、自更新入口与退出码。
+- `cmd/s3get/`、`cmd/s3push/`、`cmd/s3unzip/`：独立入口。
 - `internal/get/`、`internal/push/`：可复用的下载、上传实现，以及各自的参数、界面和测试。
+- `internal/unzip/`：ZIP 索引读取、分片下载、流式解压、并行上传及校验清理。
 - `internal/pkg/`：共用的 AWS 配置、连接参数、S3 客户端、URI 解析、参数分区、字节大小和分片规划。
 - `internal/update/`：原生更新检测、下载进度、重试、校验和可执行文件替换。
 
-`command.go` 将 Cobra 子命令绑定到共享实现；`run.go` 负责传输执行流程，`cli.go` 负责参数定义和配置解析，`logic.go` 负责传输逻辑，`ui.go` 展示动态进度。统一入口在同一进程中执行 get/push，不启动其他命令进程。
+`command.go` 将 Cobra 子命令绑定到共享实现；`run.go` 负责传输执行流程，`cli.go` 负责参数定义和配置解析，`logic.go` 负责传输逻辑，`ui.go` 展示动态进度。统一入口在同一进程中执行 get/push/unzip，不启动其他命令进程。

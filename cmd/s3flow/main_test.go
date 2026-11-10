@@ -10,7 +10,7 @@ import (
 )
 
 func TestNativeCommandsAndGroupedHelp(t *testing.T) {
-	for _, name := range []string{"get", "push", "s3get", "s3push"} {
+	for _, name := range []string{"get", "push", "s3get", "s3push", "unzip", "s3unzip"} {
 		var out, errOut bytes.Buffer
 		if code := run([]string{name, "--help"}, &out, &errOut); code != 0 || errOut.Len() != 0 {
 			t.Fatalf("%s: code=%d stderr=%s", name, code, &errOut)
@@ -30,7 +30,7 @@ func TestNativeVersionsDoNotStartTransfers(t *testing.T) {
 	previous := update.Version
 	update.Version = "v1.2.3"
 	t.Cleanup(func() { update.Version = previous })
-	for _, args := range [][]string{{"--version"}, {"get", "--version"}, {"push", "--version"}} {
+	for _, args := range [][]string{{"--version"}, {"get", "--version"}, {"push", "--version"}, {"unzip", "--version"}} {
 		var out, errOut bytes.Buffer
 		if code := run(args, &out, &errOut); code != 0 || errOut.Len() != 0 {
 			t.Fatalf("%v: code=%d stderr=%s", args, code, &errOut)
@@ -62,7 +62,7 @@ func TestCobraRejectsBadArgumentsAndParsesFlagsAfterPaths(t *testing.T) {
 }
 
 func TestAllNativeHelpIsEnglish(t *testing.T) {
-	for _, args := range [][]string{nil, {"--help"}, {"help", "get"}, {"help", "push"}, {"get", "--help"}, {"push", "--help"}, {"s3get", "--help"}, {"s3push", "--help"}} {
+	for _, args := range [][]string{nil, {"--help"}, {"help", "get"}, {"help", "push"}, {"get", "--help"}, {"push", "--help"}, {"s3get", "--help"}, {"s3push", "--help"}, {"unzip", "--help"}, {"s3unzip", "--help"}} {
 		var out, errOut bytes.Buffer
 		if code := run(args, &out, &errOut); code != 0 || errOut.Len() != 0 {
 			t.Fatalf("%v: code=%d stderr=%s", args, code, &errOut)

@@ -9,23 +9,25 @@ import (
 	"github.com/eyotang/s3flow/internal/get"
 	"github.com/eyotang/s3flow/internal/pkg"
 	"github.com/eyotang/s3flow/internal/push"
+	"github.com/eyotang/s3flow/internal/unzip"
 	"github.com/eyotang/s3flow/internal/update"
 	"github.com/spf13/cobra"
 )
 
 var errUpdated = errors.New("updated")
 
+// newCommand assembles native transfer commands and shared update checks.
 func newCommand() *cobra.Command {
-	root := &cobra.Command{Use: "s3flow", Short: "Upload and download files with S3", Version: update.Version, SilenceErrors: true, SilenceUsage: true}
+	root := &cobra.Command{Use: "s3flow", Short: "Transfer files and extract ZIP archives with S3", Version: update.Version, SilenceErrors: true, SilenceUsage: true}
 	root.SetVersionTemplate("s3flow {{.Version}}\n")
 	root.CompletionOptions.DisableDefaultCmd = true
 	root.PersistentPreRunE = func(c *cobra.Command, _ []string) error {
-		if (c.Name() == "get" || c.Name() == "push") && update.BeforeRun("s3flow") {
+		if (c.Name() == "get" || c.Name() == "push" || c.Name() == "unzip") && update.BeforeRun("s3flow") {
 			return errUpdated
 		}
 		return nil
 	}
-	root.AddCommand(get.NewCommand(), push.NewCommand())
+	root.AddCommand(get.NewCommand(), push.NewCommand(), unzip.NewCommand())
 	return root
 }
 

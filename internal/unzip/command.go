@@ -11,6 +11,7 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/eyotang/s3flow/internal/pkg"
 	"github.com/eyotang/s3flow/internal/update"
@@ -25,7 +26,7 @@ type options struct {
 	force                                   bool
 }
 
-// NewCommand builds the native unzip command with shared connection flags.
+// NewCommand builds unzip with shared connection flags and prints only total elapsed time on success.
 func NewCommand() *cobra.Command {
 	opts := options{Options: pkg.Options{PathStyle: true}}
 	fs := flag.NewFlagSet("s3unzip", flag.ContinueOnError)
@@ -81,17 +82,16 @@ func NewCommand() *cobra.Command {
 		return nil
 	}
 	cmd.RunE = func(c *cobra.Command, _ []string) error {
+		started := time.Now()
 		cfg, err := pkg.ResolveConnectionConfig(opts.Options, pkg.ConnectionConfig(opts.Options))
 		if err != nil {
 			return err
 		}
 		ctx, stop := signal.NotifyContext(c.Context(), os.Interrupt, syscall.SIGTERM)
 		defer stop()
-		client, err := pkg.NewS3Client(ctx, cfg)
+		client, err := newTransferClient(ctx, cfg, opts)
 		if err == nil {
-			err = extract(ctx, client, opts, func(key string) {
-				fmt.Fprintln(c.OutOrStdout(), "已上传:", pkg.FormatS3URIForDisplay(opts.bucket, key))
-			})
+			err = extract(ctx, client, opts)
 		}
 		if err != nil {
 			fmt.Fprintln(c.ErrOrStderr(), "解压失败:", err)
@@ -100,7 +100,7 @@ func NewCommand() *cobra.Command {
 			}
 			return pkg.ExitError(1)
 		}
-		fmt.Fprintln(c.OutOrStdout(), "解压上传完成")
+		fmt.Fprintf(c.OutOrStdout(), "总耗时: %.3f 秒\n", time.Since(started).Seconds())
 		return nil
 	}
 	return cmd

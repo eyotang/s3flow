@@ -25,6 +25,7 @@ type remoteArchive struct {
 	size          int64
 	etag, version *string
 	slots         chan struct{}
+	cache         *blockCache
 }
 
 // openArchive pins all metadata and payload reads to the HEAD version or strong ETag.
@@ -47,7 +48,7 @@ func openArchive(ctx context.Context, client sourceAPI, opts options) (*remoteAr
 	if aws.ToString(version) == "" && etag == nil {
 		return nil, errors.New("ZIP 并行读取需要对象版本号或强 ETag")
 	}
-	return &remoteArchive{ctx: ctx, client: client, bucket: opts.sourceBucket, key: opts.sourceKey, size: *head.ContentLength, etag: etag, version: version, slots: make(chan struct{}, opts.downloads)}, nil
+	return &remoteArchive{ctx: ctx, client: client, bucket: opts.sourceBucket, key: opts.sourceKey, size: *head.ContentLength, etag: etag, version: version, slots: make(chan struct{}, opts.downloads), cache: &blockCache{blocks: make(map[int64]*cachedBlock), capacity: max(4, 2*opts.downloads), size: opts.partSize}}, nil
 }
 
 // ReadAt supplies ZIP central-directory random access without downloading the archive.
@@ -62,7 +63,7 @@ func (r *remoteArchive) ReadAt(p []byte, off int64) (int, error) {
 		return 0, io.EOF
 	}
 	n := min(int64(len(p)), r.size-off)
-	err := r.readRange(r.ctx, p[:int(n)], off)
+	err := r.readCached(r.ctx, p[:int(n)], off)
 	if err != nil {
 		return 0, err
 	}
@@ -158,10 +159,10 @@ func (r *remoteArchive) writeRanges(ctx context.Context, w io.Writer, off, size,
 		buffers := make([][]byte, int(count))
 		group, workerCtx := errgroup.WithContext(ctx)
 		for i := range buffers {
-			n := min(partSize, remaining)
+			n := min(partSize-off%partSize, remaining)
 			start := off
 			buffers[i] = make([]byte, int(n))
-			group.Go(func() error { return r.readRange(workerCtx, buffers[i], start) })
+			group.Go(func() error { return r.readCached(workerCtx, buffers[i], start) })
 			off += n
 			remaining -= n
 		}

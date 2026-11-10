@@ -12,7 +12,6 @@ import (
 	"math"
 	"path"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -33,12 +32,12 @@ type transferAPI interface {
 }
 
 type entry struct {
-	file   *zip.File
-	key    string
-	offset int64
+	file *zip.File
+	key  string
 }
 
-// planEntries validates every ZIP entry before writing any objects, including duplicates.
+// planEntries validates all central-directory names, methods, sizes and duplicate targets before writes.
+// Local header offsets are resolved by file workers to avoid serial per-entry network requests.
 func planEntries(archive *zip.Reader, opts options, size int64) ([]entry, error) {
 	entries := make([]entry, 0, len(archive.File))
 	seen := make(map[string]bool)
@@ -66,12 +65,8 @@ func planEntries(archive *zip.Reader, opts options, size int64) ([]entry, error)
 		if opts.sourceBucket == opts.bucket && key == opts.sourceKey {
 			return nil, errors.New("解压目标会覆盖源 ZIP")
 		}
-		offset, err := f.DataOffset()
-		if err != nil {
-			return nil, err
-		}
-		if offset < 0 || offset > size || f.CompressedSize64 > uint64(size-offset) || f.UncompressedSize64 > math.MaxInt64 {
-			return nil, fmt.Errorf("ZIP 条目大小或偏移无效: %q", f.Name)
+		if f.CompressedSize64 > uint64(size) || f.UncompressedSize64 > math.MaxInt64 {
+			return nil, fmt.Errorf("ZIP 条目大小无效: %q", f.Name)
 		}
 		parts, err := pkg.PlanParts(int64(f.UncompressedSize64), opts.partSize)
 		if err != nil {
@@ -80,13 +75,13 @@ func planEntries(archive *zip.Reader, opts options, size int64) ([]entry, error)
 		if len(parts) > 0 && parts[0].Size() > 5<<30 {
 			return nil, fmt.Errorf("ZIP 条目过大: %q", f.Name)
 		}
-		entries = append(entries, entry{file: f, key: key, offset: offset})
+		entries = append(entries, entry{file: f, key: key})
 	}
 	return entries, nil
 }
 
 // extract runs bounded file workers and shares global download/upload limits.
-func extract(ctx context.Context, client transferAPI, opts options, report func(string)) error {
+func extract(ctx context.Context, client transferAPI, opts options) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	remote, err := openArchive(ctx, client, opts)
@@ -115,17 +110,12 @@ func extract(ctx context.Context, client transferAPI, opts options, report func(
 	slots := make(chan struct{}, opts.uploads)
 	group, workerCtx := errgroup.WithContext(ctx)
 	jobs := make(chan entry)
-	var reportMu sync.Mutex
+	remote.ctx = workerCtx
 	for i := 0; i < min(opts.files, len(entries)); i++ {
 		group.Go(func() error {
 			for item := range jobs {
 				if err := extractEntry(workerCtx, client, remote, opts, item, slots); err != nil {
 					return fmt.Errorf("解压 %q: %w", item.file.Name, err)
-				}
-				if report != nil {
-					reportMu.Lock()
-					report(item.key)
-					reportMu.Unlock()
 				}
 			}
 			return nil
@@ -149,7 +139,11 @@ func extract(ctx context.Context, client transferAPI, opts options, report func(
 func extractEntry(ctx context.Context, client transferAPI, remote *remoteArchive, opts options, item entry, slots chan struct{}) error {
 	ctx, cancelRead := context.WithCancel(ctx)
 	defer cancelRead()
-	stream := remote.stream(ctx, item.offset, int64(item.file.CompressedSize64), opts.partSize, opts.downloads)
+	offset, err := validateEntryOffset(item, remote.size)
+	if err != nil {
+		return err
+	}
+	stream := remote.stream(ctx, offset, int64(item.file.CompressedSize64), opts.partSize, opts.downloads)
 	defer stream.Close()
 	var decoded io.Reader = stream
 	if item.file.Method == zip.Deflate {

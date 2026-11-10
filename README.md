@@ -327,7 +327,7 @@ s3flow unzip -p production \
 s3unzip s3://source-bucket/archive.zip s3://target-bucket/extracted/
 ```
 
-先通过 Range 读取 ZIP 尾部索引，再按条目分片并行下载压缩数据，按顺序解压，并将解压数据分片并行上传。整个 ZIP 和解压文件均无需落盘，大文件无需全部解压完即可开始上传。保留 ZIP 内部目录结构，跳过空目录，空文件上传为零字节对象。每完成一个文件输出目标地址。
+先通过 Range 读取 ZIP 尾部索引，再按条目分片并行下载压缩数据，按顺序解压，并将解压数据分片并行上传。整个 ZIP 和解压文件均无需落盘，大文件无需全部解压完即可开始上传。保留 ZIP 内部目录结构，跳过空目录，空文件上传为零字节对象。成功时仅输出一行 `总耗时: 12.345 秒`，计时包含配置初始化、索引读取、下载、解压和全部对象上传提交；不输出逐文件信息，错误写入 stderr。相邻条目的本地头和压缩数据共用对齐分片缓存，同一分片的并发读取只发起一次下载，避免上万小文件产生上万次串行元数据请求。条目偏移由文件 worker 按需解析。
 
 | 参数 | 默认值 | 含义 |
 | --- | --- | --- |
@@ -338,7 +338,18 @@ s3unzip s3://source-bucket/archive.zip s3://target-bucket/extracted/
 | `--part-size` | 8MiB | 下载与上传分片大小，允许 5MiB–5GiB |
 | `--force` | false | 允许非空目标前缀，并覆盖同名对象 |
 
-所有并发数范围为 1–128。下载每个条目最多缓冲 download-concurrency 个分片，上传缓冲由全局 upload-concurrency 限制；主要数据缓冲上界约为 `(file-concurrency × download-concurrency + upload-concurrency) × part-size`，默认约 96MiB，不含 SDK、解压器和 ZIP 索引开销。超大解压条目会自动增大上传分片以满足最多 10000 片的限制，此时上传缓冲也会相应增大。
+所有并发数范围为 1–128。下载每个条目最多缓冲 download-concurrency 个分片，上传缓冲由全局 upload-concurrency 限制；另有最多 `max(4, 2 × download-concurrency)` 个已完成共享缓存分片；主要数据缓冲估算为 `(file-concurrency × download-concurrency + upload-concurrency + max(4, 2 × download-concurrency)) × part-size`，默认约 160MiB，另需计入正在填充的缓存分片，不含 SDK、解压器和 ZIP 索引开销。超大解压条目会自动增大上传分片以满足最多 10000 片的限制，此时上传缓冲也会相应增大。
+
+针对 16 核、24GB 内存、约 1GiB ZIP 和上万小文件，可从以下配置开始测量（目标使用新的空前缀）：
+
+```bash
+time ./bin/s3unzip \
+  --download-concurrency 16 --upload-concurrency 64 \
+  --file-concurrency 64 --part-size 8MiB \
+  s3://source-bucket/archive.zip s3://target-bucket/perf-run-001/
+```
+
+小文件场景主要通过文件并发隐藏 PUT 请求延迟，下载缓存合并相邻条目读取；HTTP 空闲连接池按下载与上传并发数扩容以复用连接。该配置的主要缓冲保守估算约 8.75GiB（大量小文件通常远低于此值），另计活跃缓存分片和 SDK 等开销。一分钟完成 10000 个文件至少需要平均约 167 次成功对象上传/秒；下载 1GiB 至少需要平均约 17MiB/s，上传带宽则取决于解压后总大小。实际是否达到 60 秒必须用目标机器、真实 ZIP 和 S3 测量，模拟服务测试不能代替实际吞吐验证。
 
 支持 Store、Deflate 和 ZIP64；不支持加密、符号链接、特殊文件、不安全路径或重复目标文件。源 S3 必须支持 Range，并提供强 ETag 或版本号以固定源对象；读取失败最多尝试 3 次。源与目标共用 endpoint、凭据和 region，可位于不同桶。目的地址始终作为前缀，省略末尾 `/` 时自动补齐。
 

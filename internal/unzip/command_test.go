@@ -85,7 +85,7 @@ func TestSDKHTTPTransfer(t *testing.T) {
 		HTTPClient: &http.Client{Transport: handlerTransport{handler}},
 	})
 	_, opts := fixture(archive)
-	if err := extract(context.Background(), client, opts, nil); err != nil {
+	if err := extract(context.Background(), client, opts); err != nil {
 		t.Fatal(err)
 	}
 	mu.Lock()

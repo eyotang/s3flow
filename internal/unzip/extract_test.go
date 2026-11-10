@@ -30,6 +30,7 @@ type fakeS3 struct {
 	payloadDownloaded, firstUploadDownloaded                              int64
 	allowOverwrite                                                        bool
 	gate                                                                  chan struct{}
+	putDelay                                                              time.Duration
 }
 
 // HeadObject describes a stable fake archive.
@@ -94,7 +95,19 @@ func (f *fakeS3) ListObjectsV2(context.Context, *s3.ListObjectsV2Input, ...func(
 }
 
 // PutObject records small validated objects, including empty objects with nil bodies.
-func (f *fakeS3) PutObject(_ context.Context, in *s3.PutObjectInput, _ ...func(*s3.Options)) (*s3.PutObjectOutput, error) {
+func (f *fakeS3) PutObject(ctx context.Context, in *s3.PutObjectInput, _ ...func(*s3.Options)) (*s3.PutObjectOutput, error) {
+	if f.putDelay > 0 {
+		f.mu.Lock()
+		f.uploads++
+		f.maxUploads = max(f.maxUploads, f.uploads)
+		f.mu.Unlock()
+		defer func() { f.mu.Lock(); f.uploads--; f.mu.Unlock() }()
+		select {
+		case <-time.After(f.putDelay):
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
 	if (in.IfNoneMatch == nil) != f.allowOverwrite {
 		return nil, errors.New("missing no-overwrite condition")
 	}
@@ -211,7 +224,7 @@ func TestExtractStreamsAndParallelizes(t *testing.T) {
 		t.Run(fmt.Sprint(method), func(t *testing.T) {
 			files := map[string][]byte{"big.bin": big, "nested/small.txt": []byte("hello"), "empty": {}}
 			client, opts := fixture(makeArchive(t, method, files))
-			if err := extract(context.Background(), client, opts, nil); err != nil {
+			if err := extract(context.Background(), client, opts); err != nil {
 				t.Fatal(err)
 			}
 			for name, want := range files {
@@ -249,7 +262,7 @@ func TestBadRangesAndRetry(t *testing.T) {
 			case "retry":
 				client.transient = 1
 			}
-			err := extract(context.Background(), client, opts, nil)
+			err := extract(context.Background(), client, opts)
 			if kind == "retry" {
 				if err != nil {
 					t.Fatal(err)
@@ -266,7 +279,7 @@ func TestRejectUnsafeEntriesBeforeWrites(t *testing.T) {
 	for _, name := range []string{"../escape", "a/../escape", "/absolute", "a\\b", "C:/file", "./file", "a//b"} {
 		t.Run(name, func(t *testing.T) {
 			client, opts := fixture(makeArchive(t, zip.Store, map[string][]byte{name: []byte("bad"), "safe": []byte("safe")}))
-			if err := extract(context.Background(), client, opts, nil); err == nil || len(client.objects) != 0 {
+			if err := extract(context.Background(), client, opts); err == nil || len(client.objects) != 0 {
 				t.Fatalf("accepted %q: %v", name, err)
 			}
 		})
@@ -279,7 +292,7 @@ func TestRejectUnsafeEntriesBeforeWrites(t *testing.T) {
 	}
 	_ = w.Close()
 	client, opts := fixture(b.Bytes())
-	if err := extract(context.Background(), client, opts, nil); err == nil {
+	if err := extract(context.Background(), client, opts); err == nil {
 		t.Fatal("accepted duplicates")
 	}
 }
@@ -299,7 +312,7 @@ func TestChecksumFailureAndUploadFailureAbort(t *testing.T) {
 			}
 			client, opts := fixture(data)
 			client.failUpload = kind == "upload"
-			err := extract(context.Background(), client, opts, nil)
+			err := extract(context.Background(), client, opts)
 			if err == nil || len(client.objects) != 0 || client.completes != 0 {
 				t.Fatalf("corrupt object committed: %v", err)
 			}
@@ -317,7 +330,7 @@ func TestCancellationCleansUpAndJoinsWorkers(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	done := make(chan error, 1)
-	go func() { done <- extract(ctx, client, opts, nil) }()
+	go func() { done <- extract(ctx, client, opts) }()
 	select {
 	case <-client.gate:
 	case <-time.After(5 * time.Second):
@@ -341,13 +354,13 @@ func TestCancellationCleansUpAndJoinsWorkers(t *testing.T) {
 func TestNonemptyDestinationAndSourceOverwrite(t *testing.T) {
 	client, opts := fixture(makeArchive(t, zip.Store, map[string][]byte{"archive.zip": []byte("x")}))
 	client.nonempty = true
-	if err := extract(context.Background(), client, opts, nil); err == nil || len(client.objects) != 0 {
+	if err := extract(context.Background(), client, opts); err == nil || len(client.objects) != 0 {
 		t.Fatal("nonempty destination accepted")
 	}
 	opts.bucket = opts.sourceBucket
 	opts.prefix = ""
 	opts.force = true
-	if err := extract(context.Background(), client, opts, nil); err == nil || !strings.Contains(err.Error(), "覆盖源 ZIP") {
+	if err := extract(context.Background(), client, opts); err == nil || !strings.Contains(err.Error(), "覆盖源 ZIP") {
 		t.Fatal(err)
 	}
 }
@@ -358,7 +371,7 @@ func TestForceAllowsOverwrite(t *testing.T) {
 	client.nonempty = true
 	client.allowOverwrite = true
 	opts.force = true
-	if err := extract(context.Background(), client, opts, nil); err != nil {
+	if err := extract(context.Background(), client, opts); err != nil {
 		t.Fatal(err)
 	}
 	if string(client.objects["out/file"]) != "new" {
@@ -373,7 +386,7 @@ func TestDeclaredSizeMismatch(t *testing.T) {
 		offset := bytes.Index(data, []byte{'P', 'K', 1, 2})
 		binary.LittleEndian.PutUint32(data[offset+24:offset+28], size)
 		client, opts := fixture(data)
-		if err := extract(context.Background(), client, opts, nil); err == nil || len(client.objects) != 0 {
+		if err := extract(context.Background(), client, opts); err == nil || len(client.objects) != 0 {
 			t.Fatalf("accepted size %d: %v", size, err)
 		}
 	}
@@ -398,10 +411,48 @@ func TestZIP64Index(t *testing.T) {
 	result = append(result, extra...)
 	result = append(result, data[extraOffset:]...)
 	client, opts := fixture(result)
-	if err := extract(context.Background(), client, opts, nil); err != nil {
+	if err := extract(context.Background(), client, opts); err != nil {
 		t.Fatal(err)
 	}
 	if string(client.objects["out/file"]) != "data" {
 		t.Fatal("wrong ZIP64 output")
 	}
+}
+
+// TestManySmallFilesShareRanges verifies ten thousand entries reuse aligned downloads.
+// The injected PUT latency exercises file concurrency without requiring a real S3 bucket.
+func TestManySmallFilesShareRanges(t *testing.T) {
+	const count = 10000
+	payload := make([]byte, 4096)
+	_, _ = rand.New(rand.NewSource(11)).Read(payload)
+	files := make(map[string][]byte, count)
+	for i := 0; i < count; i++ {
+		files[fmt.Sprintf("file-%05d", i)] = payload
+	}
+	client, opts := fixture(makeArchive(t, zip.Store, files))
+	opts.files = 64
+	opts.downloads = 16
+	opts.uploads = 64
+	opts.partSize = 8 << 20
+	client.putDelay = 2 * time.Millisecond
+	started := time.Now()
+	if err := extract(context.Background(), client, opts); err != nil {
+		t.Fatal(err)
+	}
+	expectedBlocks := (int64(len(client.archive)) + opts.partSize - 1) / opts.partSize
+	if client.gets > int(expectedBlocks)+2 {
+		t.Fatalf("GETs=%d; expected approximately %d shared ranges", client.gets, expectedBlocks)
+	}
+	if len(client.objects) != count {
+		t.Fatalf("uploaded %d of %d", len(client.objects), count)
+	}
+	if client.maxUploads < 2 || client.maxUploads > opts.uploads {
+		t.Fatalf("PUT concurrency %d", client.maxUploads)
+	}
+	for name, got := range client.objects {
+		if !bytes.Equal(got, payload) {
+			t.Fatalf("corrupt %s", name)
+		}
+	}
+	t.Logf("files=%d archive=%.1fMiB GETs=%d maxPUTs=%d elapsed=%s (simulated S3, 2ms PUT delay)", count, float64(len(client.archive))/(1<<20), client.gets, client.maxUploads, time.Since(started))
 }

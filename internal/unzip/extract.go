@@ -107,6 +107,9 @@ func extract(ctx context.Context, client transferAPI, opts options) error {
 			return err
 		}
 	}
+	if opts.progress != nil {
+		opts.progress.total.Store(int64(len(entries)))
+	}
 	slots := make(chan struct{}, opts.uploads)
 	group, workerCtx := errgroup.WithContext(ctx)
 	jobs := make(chan entry)
@@ -116,6 +119,9 @@ func extract(ctx context.Context, client transferAPI, opts options) error {
 			for item := range jobs {
 				if err := extractEntry(workerCtx, client, remote, opts, item, slots); err != nil {
 					return fmt.Errorf("解压 %q: %w", item.file.Name, err)
+				}
+				if opts.progress != nil {
+					opts.progress.completed.Add(1)
 				}
 			}
 			return nil

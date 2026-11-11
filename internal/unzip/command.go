@@ -24,9 +24,11 @@ type options struct {
 	concurrency, downloads, uploads, files  int
 	partSize                                int64
 	force                                   bool
+	noProgress                              bool
+	progress                                *extractProgress
 }
 
-// NewCommand builds unzip with shared connection flags and prints only total elapsed time on success.
+// NewCommand builds unzip with shared connection flags and shows progress on terminals.
 func NewCommand() *cobra.Command {
 	opts := options{Options: pkg.Options{PathStyle: true}}
 	fs := flag.NewFlagSet("s3unzip", flag.ContinueOnError)
@@ -36,6 +38,7 @@ func NewCommand() *cobra.Command {
 	fs.IntVar(&opts.uploads, "upload-concurrency", 0, "Global concurrent upload requests `N` (default: concurrency)")
 	fs.IntVar(&opts.files, "file-concurrency", 2, "Concurrent ZIP entries `N` (1-128)")
 	fs.BoolVar(&opts.force, "force", false, "Allow a non-empty destination prefix and overwrite matching objects")
+	fs.BoolVar(&opts.noProgress, "no-progress", false, "Disable terminal progress")
 	size := &pkg.ByteSizeFlag{Value: 8 << 20}
 	fs.Var(size, "part-size", "Download and upload part size `SIZE` (5MiB-5GiB; default: 8MiB)")
 	cmd := &cobra.Command{Use: "unzip [flags] <s3://bucket/archive.zip> <s3://bucket/prefix/>", Aliases: []string{"s3unzip"}, Short: "Stream ZIP entries from S3 directly to S3", Version: update.Version}
@@ -90,8 +93,18 @@ func NewCommand() *cobra.Command {
 		ctx, stop := signal.NotifyContext(c.Context(), os.Interrupt, syscall.SIGTERM)
 		defer stop()
 		client, err := newTransferClient(ctx, cfg, opts)
+		var elapsed time.Duration
 		if err == nil {
-			err = extract(ctx, client, opts)
+			transfer := opts
+			var finishProgress func()
+			if !opts.noProgress {
+				transfer.progress, finishProgress = startProgress(c.OutOrStdout())
+			}
+			err = extract(ctx, client, transfer)
+			elapsed = time.Since(started)
+			if finishProgress != nil {
+				finishProgress()
+			}
 		}
 		if err != nil {
 			fmt.Fprintln(c.ErrOrStderr(), "解压失败:", err)
@@ -100,7 +113,7 @@ func NewCommand() *cobra.Command {
 			}
 			return pkg.ExitError(1)
 		}
-		fmt.Fprintf(c.OutOrStdout(), "总耗时: %.3f 秒\n", time.Since(started).Seconds())
+		fmt.Fprintf(c.OutOrStdout(), "总耗时: %.3f 秒\n", elapsed.Seconds())
 		return nil
 	}
 	return cmd

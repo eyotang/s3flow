@@ -76,30 +76,43 @@ func search(parent context.Context, client searchClient, opts options, stdout, s
 			}
 		})
 	}
+	idx := newSearchIndex(client, opts, func(place target, err error) {
+		mu.Lock()
+		defer mu.Unlock()
+		fmt.Fprintf(stderr, "s3rg: index at %s is not used: %v; searching without it\n", place.uri(), err)
+	})
 	seen := make(map[target]bool)
-	submit := func(t target, showURI bool) error {
-		if seen[t] {
-			return nil
-		}
-		seen[t] = true
-		select {
-		case jobs <- job{t, showURI}:
-			return nil
-		case <-ctx.Done():
-			return ctx.Err()
-		}
-	}
 	for _, t := range opts.targets {
 		if ctx.Err() != nil {
 			break
 		}
-		err := discover(ctx, client, t, opts.globs, len(opts.targets) > 1, submit)
+		places := ancestorIndexes(t)
+		addIndex := func(place target) { places[place] = true }
+		submit := func(object objectMeta, showURI bool) error {
+			if seen[object.target] {
+				return nil
+			}
+			seen[object.target] = true
+			if idx.skip(ctx, places, object, objectDecoding(object.key, opts.noDecompress)) {
+				return nil
+			}
+			select {
+			case jobs <- job{object.target, showURI}:
+				return nil
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		}
+		err := discover(ctx, client, t, opts.globs, len(opts.targets) > 1, addIndex, submit)
 		if err != nil {
 			report(t, err)
 		}
 	}
 	close(jobs)
 	workers.Wait()
+	if opts.indexStats {
+		idx.printStats(stderr)
+	}
 	switch {
 	case opts.quiet && matched:
 		return nil
@@ -115,35 +128,25 @@ func search(parent context.Context, client searchClient, opts options, stdout, s
 	}
 }
 
-func discover(ctx context.Context, client searchClient, t target, globs []string, multiple bool, submit func(target, bool) error) error {
+func discover(ctx context.Context, client searchClient, t target, globs []objectGlob, multiple bool, addIndex func(target), submit func(objectMeta, bool) error) error {
 	prefix := t.key
 	var probeErr error
 	if prefix != "" && !strings.HasSuffix(prefix, "/") {
-		_, probeErr = client.HeadObject(ctx, &s3.HeadObjectInput{Bucket: aws.String(t.bucket), Key: aws.String(t.key)})
+		var head *s3.HeadObjectOutput
+		head, probeErr = client.HeadObject(ctx, &s3.HeadObjectInput{Bucket: aws.String(t.bucket), Key: aws.String(t.key)})
 		if probeErr == nil {
-			return submit(t, multiple)
+			return submit(objectMeta{t, head.ContentLength, head.ETag}, multiple)
 		}
-		var response interface{ HTTPStatusCode() int }
-		var notFound *types.NotFound
-		if !errors.As(probeErr, &notFound) && (!errors.As(probeErr, &response) || (response.HTTPStatusCode() != 403 && response.HTTPStatusCode() != 404)) {
+		if !s3Missing(probeErr) && !s3Status(probeErr, 403) {
 			return probeErr
 		}
 		prefix += "/"
 	}
-	found := false
-	err := pkg.WalkObjects(ctx, client, t.bucket, prefix, func(object types.Object) error {
-		key := aws.ToString(object.Key)
-		if key == "" || !strings.HasPrefix(key, prefix) {
-			return fmt.Errorf("invalid key %q in prefix listing", key)
-		}
-		found = true
-		if strings.HasSuffix(key, "/") && aws.ToInt64(object.Size) == 0 {
+	found, err := walkSearchObjects(ctx, client, target{t.bucket, prefix}, addIndex, func(object objectMeta, relative string) error {
+		if !accepts(globs, relative) {
 			return nil
 		}
-		if !accepts(globs, strings.TrimPrefix(key, prefix)) {
-			return nil
-		}
-		return submit(target{t.bucket, key}, true)
+		return submit(object, true)
 	})
 	if err != nil {
 		return err
@@ -154,47 +157,76 @@ func discover(ctx context.Context, client searchClient, t target, globs []string
 	return nil
 }
 
-func accepts(globs []string, key string) bool {
-	includes, matched := false, false
-	for _, glob := range globs {
-		pattern := strings.TrimPrefix(glob, "!")
-		name := key
-		if !strings.Contains(pattern, "/") {
-			name = path.Base(key)
+func walkSearchObjects(ctx context.Context, client searchClient, prefix target, addIndex func(target), visit func(objectMeta, string) error) (bool, error) {
+	var found bool
+	markers := make(map[target]bool)
+	err := pkg.WalkObjects(ctx, client, prefix.bucket, prefix.key, func(item types.Object) error {
+		key := aws.ToString(item.Key)
+		relative, under := strings.CutPrefix(key, prefix.key)
+		if key == "" || !under {
+			return fmt.Errorf("invalid key %q in prefix listing", key)
 		}
-		match, _ := path.Match(pattern, name)
-		if pattern != glob {
-			if match {
-				return false
+		found = true
+		if strings.HasSuffix(key, "/") && aws.ToInt64(item.Size) == 0 {
+			return nil
+		}
+		object := objectMeta{target{prefix.bucket, key}, item.Size, item.ETag}
+		if strings.Contains(relative, indexDir) {
+			if place, marked := markedIndex(ctx, client, markers, object.target, relative); marked {
+				if addIndex != nil {
+					addIndex(place)
+				}
+				return nil
 			}
-		} else {
-			includes = true
-			matched = matched || match
 		}
-	}
-	return !includes || matched
+		return visit(object, relative)
+	})
+	return found, err
 }
 
 const maxLine = 16 << 20
 
+const (
+	decodeRaw = iota
+	decodeGzip
+)
+
+func objectDecoding(key string, raw bool) uint8 {
+	if !raw {
+		switch strings.ToLower(path.Ext(key)) {
+		case ".gz", ".gzip":
+			return decodeGzip
+		}
+	}
+	return decodeRaw
+}
+
+func decodeContent(reader io.Reader, decoding uint8) (io.Reader, func(), error) {
+	if decoding == decodeGzip {
+		decoder, err := gzip.NewReader(reader)
+		if err != nil {
+			return nil, nil, fmt.Errorf("gzip: %w", err)
+		}
+		return decoder, func() { decoder.Close() }, nil
+	}
+	return reader, func() {}, nil
+}
+
+func disableMissingChecksumWarning(options *s3.Options) {
+	options.DisableLogOutputChecksumValidationSkipped = true
+}
+
 func scanObject(ctx context.Context, client searchClient, t target, opts options, showURI bool, emit func([]byte) error) (matchedObject bool, searchErr error) {
-	result, err := client.GetObject(ctx, &s3.GetObjectInput{Bucket: aws.String(t.bucket), Key: aws.String(t.key)}, func(options *s3.Options) {
-		options.DisableLogOutputChecksumValidationSkipped = true
-	})
+	result, err := client.GetObject(ctx, &s3.GetObjectInput{Bucket: aws.String(t.bucket), Key: aws.String(t.key)}, disableMissingChecksumWarning)
 	if err != nil {
 		return false, err
 	}
 	defer result.Body.Close()
-	var reader io.Reader = result.Body
-	switch strings.ToLower(path.Ext(t.key)) {
-	case ".gz", ".gzip":
-		decoder, err := gzip.NewReader(reader)
-		if err != nil {
-			return false, fmt.Errorf("gzip: %w", err)
-		}
-		defer decoder.Close()
-		reader = decoder
+	reader, finish, err := decodeContent(result.Body, objectDecoding(t.key, opts.noDecompress))
+	if err != nil {
+		return false, err
 	}
+	defer finish()
 	batch := lineBatch{write: emit}
 	if !opts.count && !opts.files && !opts.quiet {
 		reader = flushBeforeRead{Reader: reader, flush: batch.flush}

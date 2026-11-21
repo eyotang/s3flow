@@ -8,7 +8,6 @@ import (
 	"io"
 	"os"
 	"os/signal"
-	"path"
 	"regexp"
 	"regexp/syntax"
 	"runtime"
@@ -25,17 +24,25 @@ type target struct{ bucket, key string }
 
 type options struct {
 	pkg.Options
-	patterns, globs []string
-	matchers        []func([]byte) bool
-	targets         []target
-	jobs            int
+	patterns []string
+	globs    []objectGlob
+	matchers []func([]byte) bool
+	targets  []target
+	jobs     int
 
 	ignoreCase, literal, invert  bool
 	numbers, count, files, quiet bool
+	noDecompress, noIndex        bool
+	indexBuild, indexRebuild     bool
+	indexStats                   bool
+	indexAt                      *target
+	gramQuery                    *gramCondition
 }
 
 func NewCommand() *cobra.Command {
 	opts := options{Options: pkg.Options{PathStyle: true}}
+	var globs []string
+	var indexURL string
 	fs := flag.NewFlagSet("s3rg", flag.ContinueOnError)
 	pkg.AddConnectionFlags(fs, &opts.Options)
 	cmd := &cobra.Command{Use: "rg [flags] PATTERN s3://bucket/path ...", Aliases: []string{"s3rg"}, Short: "Search S3 object contents", Version: update.Version}
@@ -43,7 +50,7 @@ func NewCommand() *cobra.Command {
 	flags := cmd.Flags()
 	pkg.AddCobraFlags(flags, fs)
 	flags.StringArrayVarP(&opts.patterns, "regexp", "e", nil, "Add a search pattern")
-	flags.StringArrayVarP(&opts.globs, "glob", "g", nil, "Filter listed objects by glob")
+	flags.StringArrayVarP(&globs, "glob", "g", nil, "Filter listed objects by glob (supports ** and !)")
 	flags.IntVarP(&opts.jobs, "concurrency", "j", min(runtime.GOMAXPROCS(0), pkg.MaxConcurrency), "Concurrent object reads (1–128)")
 	flags.BoolVarP(&opts.ignoreCase, "ignore-case", "i", false, "Ignore case")
 	flags.BoolVarP(&opts.literal, "fixed-strings", "F", false, "Match literal strings")
@@ -52,25 +59,53 @@ func NewCommand() *cobra.Command {
 	flags.BoolVarP(&opts.count, "count", "c", false, "Count matching lines per object")
 	flags.BoolVarP(&opts.files, "files-with-matches", "l", false, "Show matching object URIs")
 	flags.BoolVarP(&opts.quiet, "quiet", "q", false, "Stop at the first match without printing results")
+	flags.BoolVar(&opts.noDecompress, "no-decompress", false, "Search or index the stored bytes without decompressing")
+	flags.StringVar(&indexURL, "index", "", "Use the .s3rg index below this S3 prefix")
+	flags.BoolVar(&opts.noIndex, "no-index", false, "Search without consulting a content index")
+	flags.BoolVar(&opts.indexStats, "index-stats", false, "Report objects and index requests on stderr")
+	flags.BoolVar(&opts.indexBuild, "index-build", false, "Build or incrementally update a prefix index")
+	flags.BoolVar(&opts.indexRebuild, "index-rebuild", false, "Build the prefix index again from its current objects")
 	cmd.MarkFlagsMutuallyExclusive("count", "files-with-matches", "quiet")
+	cmd.MarkFlagsMutuallyExclusive("index", "no-index")
+	cmd.MarkFlagsMutuallyExclusive("index-build", "index-rebuild", "no-index")
 	cmd.Args = func(c *cobra.Command, args []string) error {
-		if len(opts.patterns) == 0 && len(args) > 0 {
-			opts.patterns, args = args[:1], args[1:]
-		}
-		if len(args) == 0 {
-			return errors.New("a search pattern and at least one S3 target are required")
-		}
 		if opts.jobs < 1 || opts.jobs > pkg.MaxConcurrency {
 			return errors.New("concurrency must be 1–128")
 		}
-		if err := opts.compileMatchers(); err != nil {
-			return err
-		}
-		for _, glob := range opts.globs {
-			pattern := strings.TrimPrefix(glob, "!")
-			if _, err := path.Match(pattern, ""); pattern == "" || err != nil {
-				return fmt.Errorf("invalid glob %q", glob)
+		if opts.indexBuild || opts.indexRebuild {
+			if len(args) == 0 {
+				return errors.New("at least one S3 prefix is required to build an index")
 			}
+			for _, name := range []string{"regexp", "glob", "ignore-case", "fixed-strings", "invert-match", "line-number", "count", "files-with-matches", "quiet"} {
+				if flags.Changed(name) {
+					return fmt.Errorf("--%s is a search option", name)
+				}
+			}
+		} else {
+			if len(opts.patterns) == 0 && len(args) > 0 {
+				opts.patterns, args = args[:1], args[1:]
+			}
+			if len(args) == 0 {
+				return errors.New("a search pattern and at least one S3 target are required")
+			}
+			if err := opts.compileMatchers(); err != nil {
+				return err
+			}
+			var err error
+			opts.globs, err = compileGlobs(globs)
+			if err != nil {
+				return err
+			}
+		}
+		if flags.Changed("index") {
+			if (opts.indexBuild || opts.indexRebuild) && len(args) != 1 {
+				return errors.New("--index requires exactly one source prefix when building an index")
+			}
+			bucket, key, err := pkg.ParseS3Location(indexURL)
+			if err != nil {
+				return fmt.Errorf("--index: %w", err)
+			}
+			opts.indexAt = &target{bucket, key}
 		}
 		for _, arg := range args {
 			bucket, key, err := pkg.ParseS3Location(arg)
@@ -94,6 +129,9 @@ func NewCommand() *cobra.Command {
 				// Discovery can issue a request while all object workers are busy.
 				connections := opts.jobs + 1
 				client = pkg.WithS3IdleConnections(client, connections, connections)
+				if opts.indexBuild || opts.indexRebuild {
+					return buildIndexes(ctx, client, opts, c.ErrOrStderr())
+				}
 				return search(ctx, client, opts, c.OutOrStdout(), c.ErrOrStderr())
 			}
 			err = clientErr
@@ -105,6 +143,7 @@ func NewCommand() *cobra.Command {
 }
 
 func (opts *options) compileMatchers() error {
+	var conditions []*gramCondition
 	for _, pattern := range opts.patterns {
 		flags := syntax.Perl
 		if opts.literal {
@@ -116,6 +155,9 @@ func (opts *options) compileMatchers() error {
 		parsed, err := syntax.Parse(pattern, flags)
 		if err != nil {
 			return err
+		}
+		if !opts.noIndex && !opts.invert {
+			conditions = append(conditions, planGrams(parsed))
 		}
 		if match := literalMatcher(parsed); match != nil {
 			opts.matchers = append(opts.matchers, match)
@@ -133,6 +175,7 @@ func (opts *options) compileMatchers() error {
 		}
 		opts.matchers = append(opts.matchers, expression.Match)
 	}
+	opts.gramQuery = combineGrams(false, conditions)
 	return nil
 }
 

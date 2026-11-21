@@ -4,12 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	awshttp "github.com/aws/aws-sdk-go-v2/aws/transport/http"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
@@ -245,4 +247,25 @@ func NewS3Client(ctx context.Context, cfg Config) (*s3.Client, error) {
 		}
 		options.UsePathStyle = cfg.PathStyle
 	}), nil
+}
+
+// WithS3IdleConnections retains connections across bursts of concurrent requests.
+func WithS3IdleConnections(client *s3.Client, total, perHost int) *s3.Client {
+	settings := client.Options()
+	transport, ok := settings.HTTPClient.(*awshttp.BuildableClient)
+	if !ok {
+		return client
+	}
+	current := transport.GetTransport()
+	enoughTotal := current.MaxIdleConns == 0 || current.MaxIdleConns >= total
+	if enoughTotal && current.MaxIdleConnsPerHost >= perHost {
+		return client
+	}
+	settings.HTTPClient = transport.WithTransportOptions(func(t *http.Transport) {
+		if t.MaxIdleConns != 0 {
+			t.MaxIdleConns = max(t.MaxIdleConns, total)
+		}
+		t.MaxIdleConnsPerHost = max(t.MaxIdleConnsPerHost, perHost)
+	})
+	return s3.New(settings)
 }

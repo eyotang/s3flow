@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"path"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -45,10 +46,13 @@ func search(parent context.Context, client searchClient, opts options, stdout, s
 			fmt.Fprintf(stderr, "s3rg: %s: %v\n", t.uri(), err)
 		}
 	}
-	emit := func(record string) error {
+	emit := func(data []byte) error {
 		mu.Lock()
 		defer mu.Unlock()
-		_, err := io.WriteString(stdout, record+"\n")
+		n, err := stdout.Write(data)
+		if err == nil && n != len(data) {
+			return io.ErrShortWrite
+		}
 		return err
 	}
 	for range opts.jobs {
@@ -173,7 +177,7 @@ func accepts(globs []string, key string) bool {
 
 const maxLine = 16 << 20
 
-func scanObject(ctx context.Context, client searchClient, t target, opts options, showURI bool, emit func(string) error) (bool, error) {
+func scanObject(ctx context.Context, client searchClient, t target, opts options, showURI bool, emit func([]byte) error) (matchedObject bool, searchErr error) {
 	result, err := client.GetObject(ctx, &s3.GetObjectInput{Bucket: aws.String(t.bucket), Key: aws.String(t.key)}, func(options *s3.Options) {
 		options.DisableLogOutputChecksumValidationSkipped = true
 	})
@@ -190,6 +194,15 @@ func scanObject(ctx context.Context, client searchClient, t target, opts options
 		}
 		defer decoder.Close()
 		reader = decoder
+	}
+	batch := lineBatch{write: emit}
+	if !opts.count && !opts.files && !opts.quiet {
+		reader = flushBeforeRead{Reader: reader, flush: batch.flush}
+		defer func() {
+			if err := batch.flush(); err != nil {
+				searchErr = errors.Join(searchErr, err)
+			}
+		}()
 	}
 	scanner := bufio.NewScanner(reader)
 	scanner.Buffer(make([]byte, 32<<10), maxLine+2)
@@ -211,8 +224,8 @@ func scanObject(ctx context.Context, client searchClient, t target, opts options
 			return count > 0, errors.New("line contains a NUL byte")
 		}
 		matched := false
-		for _, expression := range opts.expressions {
-			if expression.Match(line) {
+		for _, match := range opts.matchers {
+			if match(line) {
 				matched = true
 				break
 			}
@@ -225,13 +238,13 @@ func scanObject(ctx context.Context, client searchClient, t target, opts options
 		case opts.quiet:
 			return true, nil
 		case opts.files:
-			return true, emit(t.uri())
+			return true, emit([]byte(t.uri() + "\n"))
 		case opts.count:
 			continue
 		case opts.numbers:
-			err = emit(fmt.Sprintf("%s%d:%s", prefix, lineNumber, line))
+			err = batch.add(prefix, lineNumber, line)
 		default:
-			err = emit(prefix + string(line))
+			err = batch.add(prefix, 0, line)
 		}
 		if err != nil {
 			return true, err
@@ -241,7 +254,7 @@ func scanObject(ctx context.Context, client searchClient, t target, opts options
 		return count > 0, err
 	}
 	if opts.count && count > 0 {
-		return true, emit(fmt.Sprintf("%s%d", prefix, count))
+		return true, emit(append(strconv.AppendInt([]byte(prefix), count, 10), '\n'))
 	}
 	return count > 0, nil
 }

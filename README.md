@@ -61,19 +61,19 @@ npm/npx 用于首次安装引导。正式发布的 `s3flow` 在执行 get/push/u
 需要 Node.js 18 或更高版本（含 npm/npx）。本仓库为私有仓库，先使用有仓库访问权限的 GitHub 账号登录 GitHub CLI（首次使用执行 `gh auth login`），下载安装包后用 npx 运行：
 
 ```bash
-gh release download v0.4.0 --repo eyotang/s3flow --pattern eyotang-s3flow-0.4.0.tgz
-npx --yes --package=./eyotang-s3flow-0.4.0.tgz s3get --help
-npx --yes --package=./eyotang-s3flow-0.4.0.tgz s3push --help
+gh release download v0.4.1 --repo eyotang/s3flow --pattern eyotang-s3flow-0.4.1.tgz
+npx --yes --package=./eyotang-s3flow-0.4.1.tgz s3get --help
+npx --yes --package=./eyotang-s3flow-0.4.1.tgz s3push --help
 ```
 
-也可在已登录 GitHub 的浏览器中从 [v0.4.0 发布页](https://github.com/eyotang/s3flow/releases/tag/v0.4.0) 下载 `eyotang-s3flow-0.4.0.tgz`，然后在下载目录执行上述 npx 命令。私有 Release 的匿名 URL 会返回 404，因此不能直接把下载 URL 传给 npx。
+也可在已登录 GitHub 的浏览器中从 [v0.4.1 发布页](https://github.com/eyotang/s3flow/releases/tag/v0.4.1) 下载 `eyotang-s3flow-0.4.1.tgz`，然后在下载目录执行上述 npx 命令。私有 Release 的匿名 URL 会返回 404，因此不能直接把下载 URL 传给 npx。
 
 把 `--help` 替换成下文对应命令的参数即可下载或上传。npx 会自动将包安装到 npm 缓存，并选择当前系统的二进制；Windows、macOS、Linux 的 x86_64 和 ARM64 使用相同命令。包中包含全部平台的 `s3flow` 统一二进制，无需 Go、编译器或安装脚本。再次运行可复用缓存；运行目录改变时请将 `--package` 指向安装包的实际路径。
 
 也可以一次安装，之后直接使用 `s3get` 和 `s3push`：
 
 ```bash
-npm install --global ./eyotang-s3flow-0.4.0.tgz
+npm install --global ./eyotang-s3flow-0.4.1.tgz
 s3get --help
 s3push --help
 ```
@@ -113,19 +113,19 @@ make build
 本地构建全部六种系统/架构的发布包及 npx 安装包（需要 Go、Node.js/npm、Bash、tar、zip 和 shasum）：
 
 ```bash
-make release VERSION=v0.4.0
+make release VERSION=v0.4.1
 ```
 
-产物位于 `dist/v0.4.0/`，包含六个系统压缩包、通用 npm 安装包和 `checksums.txt`。构建禁用 CGO，原生压缩包包含统一入口和四个独立命令，npm 包内置统一二进制并提供五个启动入口。相同版本的输出目录存在时会拒绝覆盖。版本标签必须与 `package.json` 的版本一致；npm 安装包文件名由包名与版本号生成。
+产物位于 `dist/v0.4.1/`，包含六个系统压缩包、通用 npm 安装包和 `checksums.txt`。构建禁用 CGO，原生压缩包包含统一入口和四个独立命令，npm 包内置统一二进制并提供五个启动入口。相同版本的输出目录存在时会拒绝覆盖。版本标签必须与 `package.json` 的版本一致；npm 安装包文件名由包名与版本号生成。
 
 将发布配置提交并推送后，推送版本标签即可触发 GitHub Actions：
 
 ```bash
-git tag v0.4.0
-git push origin v0.4.0
+git tag v0.4.1
+git push origin v0.4.1
 ```
 
-工作流先在 Windows、macOS、Linux 上运行 Go 测试、Node.js 启动器测试和真实 npm 包安装/运行测试，通过后构建全部发布包并创建 GitHub Release。npm 测试在独立缓存中禁用网络和安装脚本，验证统一入口、四个子命令、兼容入口、退出码以及全局安装后清理缓存仍可运行。手动触发工作流只运行测试。带连字符的版本（例如 `v0.4.0-rc.1`）会标记为预发布。
+工作流先在 Windows、macOS、Linux 上运行 Go 测试、Node.js 启动器测试和真实 npm 包安装/运行测试，通过后构建全部发布包并创建 GitHub Release。npm 测试在独立缓存中禁用网络和安装脚本，验证统一入口、四个子命令、兼容入口、退出码以及全局安装后清理缓存仍可运行。手动触发工作流只运行测试。带连字符的版本（例如 `v0.4.1-rc.1`）会标记为预发布。
 
 需要发布到 npm registry 时，先确认包名的发布权限并完成 `npm login`，再使用 `npm publish <构建好的安装包.tgz> --access public` 发布；不能直接发布源码目录，因为其中没有内置二进制。当前 GitHub 工作流只向 GitHub Release 上传安装包。
 
@@ -383,7 +383,7 @@ s3rg -q -e 'trace-123' -e 'trace-456' s3://my-bucket/logs/app.log
 
 ### s3rg 扫描基准
 
-在 Linux amd64、Intel Core i5-1345U、Go 1.25.0 上，使用正则 `^ERROR` 统计单个对象的匹配行。每次扫描 8.5 MiB 日志，表中为三轮中位数。
+在 Linux amd64、Intel Core i5-1345U、Go 1.25.0 上，使用 Go 标准库正则路径作为基线，以 `^ERROR` 统计单个对象的匹配行。每次扫描 8.5 MiB 日志，表中为三轮中位数。
 
 | 输入 | 每次耗时 | 扫描吞吐 |
 | --- | ---: | ---: |
@@ -394,4 +394,27 @@ s3rg -q -e 'trace-123' -e 'trace-456' s3://my-bucket/logs/app.log
 
 ```bash
 go test ./internal/rg -run '^$' -bench '^BenchmarkScanObject$' -benchtime=500ms -count=3
+```
+
+对同一份内存日志统计匹配行，纯字面量和行首锚定字面量可自动使用字节匹配快路径，无需指定 `-F`。下表为三轮吞吐中位数。
+
+| 模式 | Go 正则基线 | 字节匹配快路径 |
+| --- | ---: | ---: |
+| `timed out` | 528 MB/s | 1,711 MB/s |
+| `^ERROR` | 742 MB/s | 1,757 MB/s |
+
+并发前缀基准使用本地模拟 S3 HTTP 服务，返回两页对象列表，每次对象 GET 加入 1 ms 固定延迟。小对象组的第二页额外延迟 20 ms，模拟两批 GET 之间的空档。下表为五轮总耗时中位数，使用 `-Fc` 输出每个对象的匹配行数。
+
+| 前缀内容 | 对象 GET 次数 | 对象响应体总字节数 | `-j 1` | `-j 4` | `-j 16` |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 256 个小对象 | 256 | 2,228,224 | 506 ms | 172 ms | 90 ms |
+| 8 个大对象 | 8 | 71,303,168 | 107 ms | 39 ms | 24 ms |
+| 32 个 gzip 对象 | 32 | 245,152 | 187 ms | 46 ms | 21 ms |
+
+该基准经过真实的 AWS SDK 客户端、本地 HTTP 连接和搜索 worker，模拟响应存放在内存中。结果用于比较并发档位，实际 S3 耗时取决于网络、存储和日志内容。基准还输出 `first-ns/op`（到首次输出计数的平均耗时）和 `connections/op`（每次搜索新建的 TCP 连接数）。在小对象组使用 `-j 32` 时，按并发保留空闲连接使每次搜索新建的 TCP 连接从约 66 条降到 32 条，总耗时中位数从 84 ms 降到 81 ms。
+
+高命中率输出基准以内存对象作为输入，用 8 个 worker 扫描并格式化 131,072 条带 URI 和行号的结果。将完整记录按最多 32 KiB 分批写出后，输出写入次数从 131,072 次降到 304 次，耗时中位数从 103.5 ms 降到 3.0 ms。该测试使用内存计数器接收结果，实际终端或管道的吞吐取决于接收方速度。
+
+```bash
+go test ./internal/rg -run '^$' -bench 'Benchmark(LiteralMatch|SearchPrefix|SearchOutput)$' -benchtime=300ms -count=5
 ```

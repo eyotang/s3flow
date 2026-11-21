@@ -2,9 +2,7 @@ package unzip
 
 import (
 	"context"
-	"net/http"
 
-	awshttp "github.com/aws/aws-sdk-go-v2/aws/transport/http"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/eyotang/s3flow/internal/pkg"
 )
@@ -16,15 +14,6 @@ func newTransferClient(ctx context.Context, cfg pkg.Config, opts options) (*s3.C
 	if err != nil {
 		return nil, err
 	}
-	settings := client.Options()
-	transport, ok := settings.HTTPClient.(*awshttp.BuildableClient)
-	if !ok {
-		return client, nil
-	}
 	connections := opts.downloads + opts.uploads
-	settings.HTTPClient = transport.WithTransportOptions(func(t *http.Transport) {
-		t.MaxIdleConns = max(128, connections)
-		t.MaxIdleConnsPerHost = max(32, connections)
-	})
-	return s3.New(settings), nil
+	return pkg.WithS3IdleConnections(client, max(128, connections), max(32, connections)), nil
 }

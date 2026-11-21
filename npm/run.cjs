@@ -4,9 +4,17 @@ const path = require('node:path');
 const { spawn } = require('node:child_process');
 const { constants } = require('node:os');
 
+const subcommands = new Map([
+  ['s3get', 'get'],
+  ['s3push', 'push'],
+  ['s3unzip', 'unzip'],
+  ['s3rg', 'rg'],
+  ['s3tree', 'tree'],
+]);
+
 function binaryPath(command, platform = process.platform, arch = process.arch) {
   if (command !== 's3flow') {
-    throw new Error(`Unknown command: ${command}. Use get, push, unzip or rg (aliases: s3get, s3push, s3unzip, s3rg).`);
+    throw new Error(`Unknown command: ${command}. Use get, push, unzip, rg or tree (aliases: s3get, s3push, s3unzip, s3rg, s3tree).`);
   }
   if (!['win32', 'darwin', 'linux'].includes(platform) || !['x64', 'arm64'].includes(arch)) {
     throw new Error(`Unsupported platform: ${platform}/${arch}. Supported: Windows, macOS, Linux on x64 or arm64.`);
@@ -17,8 +25,9 @@ function binaryPath(command, platform = process.platform, arch = process.arch) {
 function run(command, args) {
   let executable;
   try {
-    if (['s3get', 's3push', 's3unzip', 's3rg'].includes(command)) {
-      args = [{ s3get: 'get', s3push: 'push', s3unzip: 'unzip', s3rg: 'rg' }[command], ...args];
+    const subcommand = subcommands.get(command);
+    if (subcommand) {
+      args = [subcommand, ...args];
     } else if (command !== 's3flow') {
       throw new Error(`Unknown command: ${command}`);
     }

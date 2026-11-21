@@ -53,15 +53,15 @@ try {
   function npmExec(args) {
     return execute(process.execPath, [npmCLI, 'exec', '--yes', '--offline', '--ignore-scripts', `--package=${tarball}`, '--', ...args], { cwd: temp, env });
   }
-  for (const command of ['s3get', 's3push', 's3unzip']) {
+  for (const command of ['s3get', 's3push', 's3unzip', 's3rg']) {
     const inferred = execute(process.execPath, [npmCLI, 'exec', '--yes', '--offline', '--ignore-scripts', '--', `file:${tarball}`, command, '--help'], { cwd: temp, env });
     assert.equal(inferred.status, 0, inferred.stderr);
-    assert.match(inferred.stdout + inferred.stderr, /-concurrency N/);
-    const subcommand = { s3get: 'get', s3push: 'push', s3unzip: 'unzip' }[command];
+    assert.match(inferred.stdout + inferred.stderr, /(?:-concurrency N|--concurrency int)/);
+    const subcommand = { s3get: 'get', s3push: 'push', s3unzip: 'unzip', s3rg: 'rg' }[command];
     for (const args of [[command, '--help'], ['s3flow', command, '--help'], ['s3flow', subcommand, '--help']]) {
       const result = npmExec(args);
       assert.equal(result.status, 0, result.stderr);
-      assert.match(result.stdout + result.stderr, /-concurrency N/);
+      assert.match(result.stdout + result.stderr, /(?:-concurrency N|--concurrency int)/);
       assert.ok(result.stdout.includes(`s3flow ${subcommand} [flags]`), 'Dispatched to the wrong native command');
     }
     const version = npmExec(['s3flow', subcommand, '--version']);
@@ -92,19 +92,19 @@ try {
   const globalRoot = process.platform === 'win32' ? path.join(prefix, 'node_modules') : path.join(prefix, 'lib', 'node_modules');
   const installedRoot = path.join(globalRoot, packageName);
   assert.equal(fs.lstatSync(installedRoot).isSymbolicLink(), false);
-  for (const command of ['s3get', 's3push', 's3unzip']) {
+  for (const command of ['s3get', 's3push', 's3unzip', 's3rg']) {
     const shim = process.platform === 'win32' ? path.join(prefix, `${command}.cmd`) : path.join(prefix, 'bin', command);
     assert.ok(fs.existsSync(shim), `Missing global command: ${shim}`);
     const result = execute(process.execPath, [path.join(installedRoot, 'npm', `${command}.cjs`), '--help'], { cwd: temp });
     assert.equal(result.status, 0, result.stderr);
-    assert.match(result.stdout + result.stderr, /-concurrency N/);
+    assert.match(result.stdout + result.stderr, /(?:-concurrency N|--concurrency int)/);
   }
   const unifiedShim = process.platform === 'win32' ? path.join(prefix, 's3flow.cmd') : path.join(prefix, 'bin', 's3flow');
   assert.ok(fs.existsSync(unifiedShim), 'Missing global s3flow entrypoint');
-  for (const subcommand of ['get', 'push', 'unzip']) {
+  for (const subcommand of ['get', 'push', 'unzip', 'rg']) {
     const result = execute(process.execPath, [path.join(installedRoot, 'npm', 'cli.cjs'), subcommand, '--help'], { cwd: temp });
     assert.equal(result.status, 0, result.stderr);
-    assert.match(result.stdout, /-concurrency N/);
+    assert.match(result.stdout, /(?:-concurrency N|--concurrency int)/);
   }
   console.log(`npm package smoke tests passed on ${process.platform}/${process.arch}`);
 } finally {

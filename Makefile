@@ -12,17 +12,17 @@ tidy:
 lint:
 	golangci-lint run ./...
 
-build: s3flow s3get s3push s3unzip
+build: s3flow s3get s3push s3unzip s3rg
 
 release: test
 	npm test
 	bash scripts/release.sh "$(VERSION)"
 
-s3flow s3get s3push s3unzip:
+s3flow s3get s3push s3unzip s3rg:
 	mkdir -p $(BIN_DIR)
 	go build -ldflags="$(LDFLAGS)" -trimpath -o $(BIN_DIR)/$@ ./cmd/$@
 
 clean:
 	rm -rf bin dist
 
-.PHONY: all test tidy lint build release s3flow s3get s3push s3unzip clean
+.PHONY: all test tidy lint build release s3flow s3get s3push s3unzip s3rg clean

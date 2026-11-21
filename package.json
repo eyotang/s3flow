@@ -1,7 +1,7 @@
 {
   "name": "@eyotang/s3flow",
-  "version": "0.3.0",
-  "description": "Cross-platform S3 CLI: s3flow get, push and unzip",
+  "version": "0.4.0",
+  "description": "Cross-platform S3 CLI: s3flow get, push, unzip and rg",
   "license": "MIT",
   "publishConfig": { "access": "public", "registry": "https://registry.npmjs.org" },
   "repository": { "type": "git", "url": "git+https://github.com/eyotang/s3flow.git" },
@@ -10,7 +10,8 @@
     "s3flow": "npm/cli.cjs",
     "s3get": "npm/s3get.cjs",
     "s3push": "npm/s3push.cjs",
-    "s3unzip": "npm/s3unzip.cjs"
+    "s3unzip": "npm/s3unzip.cjs",
+    "s3rg": "npm/s3rg.cjs"
   },
   "files": ["npm/*.cjs", "npm/native/", "README.md", "LICENSE"],
   "scripts": {

@@ -6,7 +6,7 @@ const { constants } = require('node:os');
 
 function binaryPath(command, platform = process.platform, arch = process.arch) {
   if (command !== 's3flow') {
-    throw new Error(`Unknown command: ${command}. Use get, push or unzip (aliases: s3get, s3push, s3unzip).`);
+    throw new Error(`Unknown command: ${command}. Use get, push, unzip or rg (aliases: s3get, s3push, s3unzip, s3rg).`);
   }
   if (!['win32', 'darwin', 'linux'].includes(platform) || !['x64', 'arm64'].includes(arch)) {
     throw new Error(`Unsupported platform: ${platform}/${arch}. Supported: Windows, macOS, Linux on x64 or arm64.`);
@@ -17,8 +17,8 @@ function binaryPath(command, platform = process.platform, arch = process.arch) {
 function run(command, args) {
   let executable;
   try {
-    if (['s3get', 's3push', 's3unzip'].includes(command)) {
-      args = [{ s3get: 'get', s3push: 'push', s3unzip: 'unzip' }[command], ...args];
+    if (['s3get', 's3push', 's3unzip', 's3rg'].includes(command)) {
+      args = [{ s3get: 'get', s3push: 'push', s3unzip: 'unzip', s3rg: 'rg' }[command], ...args];
     } else if (command !== 's3flow') {
       throw new Error(`Unknown command: ${command}`);
     }

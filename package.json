@@ -1,6 +1,6 @@
 {
   "name": "@eyotang/s3flow",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Cross-platform S3 CLI for listing, transfers, extraction, and search",
   "license": "MIT",
   "publishConfig": { "access": "public", "registry": "https://registry.npmjs.org" },

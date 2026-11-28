@@ -28,66 +28,38 @@ type options struct {
 }
 
 func NewCommand(name string) *cobra.Command {
+	switch name {
+	case "du":
+		return newDUCommand()
+	case "presign":
+		return newPresignCommand()
+	}
 	descriptions := map[string]string{
-		"sync":    "Copy new or changed files between directories and S3 prefixes",
-		"cp":      "Copy a file, object, or prefix locally or in S3",
-		"mv":      "Move files or objects by copying each one before removing its source",
-		"presign": "Print a time-limited S3 GET URL",
+		"sync": "Copy new or changed files between directories and S3 prefixes",
+		"cp":   "Copy a file, object, or prefix locally or in S3",
+		"mv":   "Move files or objects by copying each one before removing its source",
 	}
 	opts := options{name: name, partSize: pkg.ByteSizeFlag{Value: pkg.DefaultPartSize}}
-	var connection pkg.Options
 	var source, destination location
-	var expires int
-	cmd := &cobra.Command{
-		Use: name + " [flags] SOURCE DESTINATION", Short: descriptions[name],
-		Aliases: []string{"s3" + name}, Version: update.Version,
-	}
-	cmd.SetVersionTemplate("{{.CommandPath}} {{.Version}}\n")
-	flags := cmd.Flags()
-	flags.SetNormalizeFunc(func(_ *pflag.FlagSet, name string) pflag.NormalizedName {
-		switch name {
-		case "Endpoint", "Region":
-			name = strings.ToLower(name)
-		case "dry-run":
-			name = "dryrun"
-		}
-		return pflag.NormalizedName(name)
+	cmd := newClientCommand(name, "SOURCE DESTINATION", descriptions[name], func(ctx context.Context, client *s3.Client, c *cobra.Command) error {
+		client = pkg.WithS3IdleConnections(client, opts.concurrency, opts.concurrency)
+		job := transfer{client: client, options: opts, output: c.OutOrStdout()}
+		return job.run(ctx, source, destination, c.InOrStdin())
 	})
+	flags := cmd.Flags()
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
-	pkg.AddConnectionFlags(fs, &connection)
-	if name != "presign" {
-		fs.Var(&opts.partSize, "part-size", "Multipart transfer size (5MiB–5GiB)")
-	}
+	fs.Var(&opts.partSize, "part-size", "Multipart transfer size (5MiB–5GiB)")
 	pkg.AddCobraFlags(flags, fs)
-	if name == "presign" {
-		cmd.Use = name + " [flags] s3://bucket/key"
-		flags.IntVar(&expires, "expires-in", 3600, "GET URL lifetime in seconds (1–604800)")
+	flags.BoolVar(&opts.dryRun, "dryrun", false, "Print planned operations without changing any files or objects")
+	flags.IntVarP(&opts.concurrency, "concurrency", "j", pkg.DefaultConcurrency, "Concurrent parts per object (1–128)")
+	if name == "sync" {
+		opts.recursive = true
+		flags.BoolVar(&opts.deleteExtra, "delete", false, "Remove destination-only files after all copies succeed")
 	} else {
-		flags.BoolVar(&opts.dryRun, "dryrun", false, "Print planned operations without changing any files or objects")
-		flags.IntVarP(&opts.concurrency, "concurrency", "j", pkg.DefaultConcurrency, "Concurrent parts per object (1–128)")
-		if name == "sync" {
-			opts.recursive = true
-			flags.BoolVar(&opts.deleteExtra, "delete", false, "Remove destination-only files after all copies succeed")
-		} else {
-			flags.BoolVarP(&opts.recursive, "recursive", "r", false, "Copy the contents of a directory or prefix")
-			flags.BoolVar(&opts.force, "force", false, "Allow overwriting existing destinations")
-		}
+		flags.BoolVarP(&opts.recursive, "recursive", "r", false, "Copy the contents of a directory or prefix")
+		flags.BoolVar(&opts.force, "force", false, "Allow overwriting existing destinations")
 	}
 	cmd.Args = func(c *cobra.Command, args []string) error {
-		if name == "presign" {
-			if err := cobra.ExactArgs(1)(c, args); err != nil {
-				return err
-			}
-			var err error
-			source.bucket, source.path, err = pkg.ParseS3URI(args[0])
-			if err != nil {
-				return err
-			}
-			if expires < 1 || expires > 604800 {
-				return errors.New("--expires-in must be 1–604800 seconds")
-			}
-			return nil
-		}
 		if err := cobra.ExactArgs(2)(c, args); err != nil {
 			return err
 		}
@@ -121,6 +93,53 @@ func NewCommand(name string) *cobra.Command {
 		}
 		return nil
 	}
+	return cmd
+}
+
+func newPresignCommand() *cobra.Command {
+	var source location
+	var expires int
+	cmd := newClientCommand("presign", "s3://bucket/key", "Print a time-limited S3 GET URL", func(ctx context.Context, client *s3.Client, c *cobra.Command) error {
+		return presign(ctx, client, source, expires, c.OutOrStdout())
+	})
+	cmd.Flags().IntVar(&expires, "expires-in", 3600, "GET URL lifetime in seconds (1–604800)")
+	cmd.Args = func(c *cobra.Command, args []string) error {
+		if err := cobra.ExactArgs(1)(c, args); err != nil {
+			return err
+		}
+		var err error
+		source.bucket, source.path, err = pkg.ParseS3URI(args[0])
+		if err != nil {
+			return err
+		}
+		if expires < 1 || expires > 604800 {
+			return errors.New("--expires-in must be 1–604800 seconds")
+		}
+		return nil
+	}
+	return cmd
+}
+
+func newClientCommand(name, usage, description string, run func(context.Context, *s3.Client, *cobra.Command) error) *cobra.Command {
+	var connection pkg.Options
+	cmd := &cobra.Command{
+		Use: name + " [flags] " + usage, Short: description,
+		Aliases: []string{"s3" + name}, Version: update.Version,
+	}
+	cmd.SetVersionTemplate("{{.CommandPath}} {{.Version}}\n")
+	flags := cmd.Flags()
+	flags.SetNormalizeFunc(func(_ *pflag.FlagSet, name string) pflag.NormalizedName {
+		switch name {
+		case "Endpoint", "Region":
+			name = strings.ToLower(name)
+		case "dry-run":
+			name = "dryrun"
+		}
+		return pflag.NormalizedName(name)
+	})
+	fs := flag.NewFlagSet(name, flag.ContinueOnError)
+	pkg.AddConnectionFlags(fs, &connection)
+	pkg.AddCobraFlags(flags, fs)
 	cmd.RunE = func(c *cobra.Command, _ []string) error {
 		connection.CredentialsExplicit = flags.Changed("ak") || flags.Changed("sk") || flags.Changed("session-token")
 		connection.AWSDirectoryExplicit = flags.Changed("aws")
@@ -133,13 +152,7 @@ func NewCommand(name string) *cobra.Command {
 		defer stop()
 		client, err := pkg.NewS3Client(ctx, cfg)
 		if err == nil {
-			if name == "presign" {
-				err = presign(ctx, client, source, expires, c.OutOrStdout())
-			} else {
-				client = pkg.WithS3IdleConnections(client, opts.concurrency, opts.concurrency)
-				job := transfer{client: client, options: opts, output: c.OutOrStdout()}
-				err = job.run(ctx, source, destination, c.InOrStdin())
-			}
+			err = run(ctx, client, c)
 		}
 		if err == nil {
 			return nil

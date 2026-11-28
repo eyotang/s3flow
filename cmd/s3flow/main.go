@@ -31,7 +31,7 @@ func newCommand() *cobra.Command {
 		return nil
 	}
 	root.AddCommand(get.NewCommand(), push.NewCommand(), unzip.NewCommand(), rg.NewCommand(), tree.NewCommand())
-	for _, name := range []string{"sync", "cp", "mv", "presign"} {
+	for _, name := range []string{"sync", "cp", "mv", "presign", "du"} {
 		root.AddCommand(objectcmd.NewCommand(name))
 	}
 	return root

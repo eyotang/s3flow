@@ -10,10 +10,11 @@ const root = path.resolve(__dirname, '..');
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), 's3flow-npx-'));
 const npmCLI = process.env.npm_execpath;
 if (!npmCLI) throw new Error('Run this check with npm run test:package');
-const commands = Object.entries({ s3get: 'get', s3push: 'push', s3unzip: 'unzip', s3rg: 'rg', s3tree: 'tree',
+const commands = Object.entries({ s3get: 'get', s3push: 'push', s3unzip: 'unzip', s3rg: 'rg', s3tree: 'tree', s3du: 'du',
   s3sync: 'sync', s3cp: 'cp', s3mv: 'mv', s3presign: 'presign' });
 
 function helpFlag(subcommand) {
+  if (subcommand === 'du') return /--summarize\b/;
   if (subcommand === 'presign') return /--expires-in\b/;
   return subcommand === 'tree' ? /--profile\b/ : /(?:-concurrency N|--concurrency int)/;
 }

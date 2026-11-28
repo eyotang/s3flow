@@ -20,7 +20,7 @@ function install(args) {
   try {
     const options = parseArgs(args);
     if (options.help) {
-      console.log('Usage: s3flow install [--prefix DIRECTORY]\n\nInstall s3flow, s3get, s3push, s3unzip, s3rg, s3tree, s3sync, s3cp, s3mv and s3presign into the npm global prefix.\nUse --prefix to select a writable installation directory.');
+      console.log('Usage: s3flow install [--prefix DIRECTORY]\n\nInstall s3flow, s3get, s3push, s3unzip, s3rg, s3tree, s3du, s3sync, s3cp, s3mv and s3presign into the npm global prefix.\nUse --prefix to select a writable installation directory.');
       return;
     }
     const npmCLI = process.env.npm_execpath;
@@ -60,7 +60,7 @@ function install(args) {
       const result = spawnSync(process.execPath, [npmCLI, 'prefix', '--global'], { encoding: 'utf8', shell: false });
       return result.status === 0 ? result.stdout.trim() : '';
     })();
-    console.log('Installed s3flow, s3get, s3push, s3unzip, s3rg, s3tree, s3sync, s3cp, s3mv and s3presign. Run s3flow --help to see the available commands.');
+    console.log('Installed s3flow, s3get, s3push, s3unzip, s3rg, s3tree, s3du, s3sync, s3cp, s3mv and s3presign. Run s3flow --help to see the available commands.');
     if (prefix) console.log(`Command directory (must be on PATH): ${process.platform === 'win32' ? prefix : path.join(prefix, 'bin')}`);
   } catch (error) {
     console.error(`s3flow install: ${error.message}`);

@@ -10,6 +10,7 @@ const subcommands = new Map([
   ['s3unzip', 'unzip'],
   ['s3rg', 'rg'],
   ['s3tree', 'tree'],
+  ['s3du', 'du'],
   ['s3sync', 'sync'],
   ['s3cp', 'cp'],
   ['s3mv', 'mv'],

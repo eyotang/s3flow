@@ -1,6 +1,6 @@
 {
   "name": "@eyotang/s3flow",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "Cross-platform S3 CLI for listing, transfers, extraction, and search",
   "license": "MIT",
   "publishConfig": { "access": "public", "registry": "https://registry.npmjs.org" },
@@ -13,6 +13,7 @@
     "s3unzip": "npm/s3unzip.cjs",
     "s3rg": "npm/s3rg.cjs",
     "s3tree": "npm/s3tree.cjs",
+    "s3du": "npm/s3du.cjs",
     "s3sync": "npm/s3sync.cjs",
     "s3cp": "npm/s3cp.cjs",
     "s3mv": "npm/s3mv.cjs",

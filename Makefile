@@ -1,6 +1,6 @@
 BIN_DIR ?= bin
 LDFLAGS ?= -w -s
-COMMANDS := s3flow s3get s3push s3unzip s3rg s3tree s3sync s3cp s3mv s3presign
+COMMANDS := s3flow s3get s3push s3unzip s3rg s3tree s3du s3sync s3cp s3mv s3presign
 
 all: test build
 

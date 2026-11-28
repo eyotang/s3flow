@@ -30,7 +30,7 @@ func TestNativeVersionsDoNotStartTransfers(t *testing.T) {
 	previous := update.Version
 	update.Version = "v1.2.3"
 	t.Cleanup(func() { update.Version = previous })
-	for _, args := range [][]string{{"--version"}, {"get", "--version"}, {"push", "--version"}, {"unzip", "--version"}, {"tree", "--version"}, {"s3tree", "--version"}} {
+	for _, args := range [][]string{{"--version"}, {"get", "--version"}, {"push", "--version"}, {"unzip", "--version"}, {"tree", "--version"}, {"s3tree", "--version"}, {"du", "--version"}, {"s3du", "--version"}} {
 		var out, errOut bytes.Buffer
 		if code := run(args, &out, &errOut); code != 0 || errOut.Len() != 0 {
 			t.Fatalf("%v: code=%d stderr=%s", args, code, &errOut)
@@ -53,6 +53,7 @@ func TestCobraRejectsBadArgumentsAndParsesFlagsAfterPaths(t *testing.T) {
 		{[]string{"push", "file", "s3://bucket/key", "--part-size", "1MiB"}, "upload part size"},
 		{[]string{"push", t.TempDir(), "s3://bucket/prefix/", "-p", "example", "--force"}, "没有可上传的文件"},
 		{[]string{"tree"}, "one S3 bucket or prefix is required"},
+		{[]string{"du", "s3://bucket/", "--top", "-1"}, "--top must be zero or greater"},
 	} {
 		var out, errOut bytes.Buffer
 		code := run(tc.args, &out, &errOut)
@@ -63,7 +64,7 @@ func TestCobraRejectsBadArgumentsAndParsesFlagsAfterPaths(t *testing.T) {
 }
 
 func TestAllNativeHelpIsEnglish(t *testing.T) {
-	for _, args := range [][]string{nil, {"--help"}, {"help", "get"}, {"help", "push"}, {"get", "--help"}, {"push", "--help"}, {"s3get", "--help"}, {"s3push", "--help"}, {"unzip", "--help"}, {"s3unzip", "--help"}, {"tree", "--help"}, {"s3tree", "--help"}} {
+	for _, args := range [][]string{nil, {"--help"}, {"help", "get"}, {"help", "push"}, {"get", "--help"}, {"push", "--help"}, {"s3get", "--help"}, {"s3push", "--help"}, {"unzip", "--help"}, {"s3unzip", "--help"}, {"tree", "--help"}, {"s3tree", "--help"}, {"du", "--help"}, {"s3du", "--help"}} {
 		var out, errOut bytes.Buffer
 		if code := run(args, &out, &errOut); code != 0 || errOut.Len() != 0 {
 			t.Fatalf("%v: code=%d stderr=%s", args, code, &errOut)

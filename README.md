@@ -1,6 +1,6 @@
 # s3flow
 
-`s3flow` 是原生统一入口：`s3flow get` 用于下载，`s3flow push` 用于上传文件或目录，`s3flow unzip` 将 S3 ZIP 流式解压到 S3。`s3flow rg` 搜索 S3 对象内容，`s3flow tree` 列出 S3 目录树。各子命令共用 AWS 配置。提供 `s3get`、`s3push`、`s3unzip`、`s3rg` 和 `s3tree` 独立入口，直接下载原生二进制也可使用 `s3flow`。
+`s3flow` 是原生统一入口：`s3flow get` 用于下载，`s3flow push` 用于上传文件或目录，`s3flow unzip` 将 S3 ZIP 流式解压到 S3。`s3flow rg` 搜索 S3 对象内容，`s3flow tree` 列出 S3 目录树。通过 `sync` 增量同步目录，`cp` 复制文件，`mv` 移动文件，`presign` 生成临时下载链接。各子命令共用 AWS 配置，也提供同名加 `s3` 前缀的独立入口，例如 `s3sync` 和 `s3presign`。
 
 `s3get` 是一个基于 Bubble Tea 的 S3 并发分片下载工具。S3 URI 模式通过 `HeadObject` 获取对象大小，预签名 URL 模式通过 `GET bytes=0-0` 探测大小，随后自动规划 Range 分片并发下载；界面使用 Bubbles Animated Progress 展示实时进度、速度、剩余时间和最终耗时。
 
@@ -18,7 +18,7 @@ s3get --help
 s3push --help
 ```
 
-安装器使用 npm 的全局安装目录，安装统一入口和五个独立命令。可指定可写目录：`npx @eyotang/s3flow@latest install --prefix <目录>`，并将输出提示中的命令目录加入 `PATH`。全局安装只保留当前平台的二进制，不依赖 npx 缓存；同一条安装命令可用于升级。已有 AWS 配置继续使用，不需要在安装时填写凭据。
+安装器使用 npm 的全局安装目录，安装统一入口和九个独立命令。可指定可写目录：`npx @eyotang/s3flow@latest install --prefix <目录>`，并将输出提示中的命令目录加入 `PATH`。全局安装只保留当前平台的二进制，不依赖 npx 缓存；同一条安装命令可用于升级。已有 AWS 配置继续使用，不需要在安装时填写凭据。
 
 临时使用而不进行全局安装：`npx @eyotang/s3flow@latest s3get --help` 或 `npx @eyotang/s3flow@latest s3push --help`。公开 npm 包内置二进制，不要求使用者访问私有 GitHub 仓库。
 
@@ -37,7 +37,7 @@ s3flow unzip s3://bucket/archive.zip s3://bucket/extracted/
 s3flow tree s3://bucket/backup/
 ```
 
-命令行帮助使用英文，按 Connection、Credentials、Transfer、Files、General 分区展示。子命令由 Cobra 解析参数，直接调用共享的 Go 传输与终端界面实现。长参数使用 `--flag`，短参数使用 `-p`、`-o`、`-r` 等形式，参数可放在路径前后。兼容 `s3flow s3get`、`s3flow s3push`、`s3flow s3unzip`、`s3flow s3rg` 和 `s3flow s3tree` 写法。临时使用可执行 `npx @eyotang/s3flow@latest get --help` 或 `npx @eyotang/s3flow@latest push --help`。
+命令行帮助使用英文，`get`、`push` 和 `unzip` 的参数按 Connection、Credentials、Transfer、Files、General 分区展示。子命令由 Cobra 解析参数，直接调用共享的 Go 传输与终端界面实现。长参数使用 `--flag`，短参数使用 `-p`、`-o`、`-r` 等形式，参数可放在路径前后。兼容 `s3flow s3get`、`s3flow s3push`、`s3flow s3unzip`、`s3flow s3rg`、`s3flow s3tree`、`s3flow s3sync`、`s3flow s3cp`、`s3flow s3mv` 和 `s3flow s3presign` 写法。临时使用可执行 `npx @eyotang/s3flow@latest get --help` 或 `npx @eyotang/s3flow@latest push --help`。
 
 ### 查看当前版本
 
@@ -62,20 +62,20 @@ npm/npx 用于首次安装引导。正式发布的 `s3flow` 在执行 get/push/u
 需要 Node.js 18 或更高版本（含 npm/npx）。本仓库为私有仓库，先使用有仓库访问权限的 GitHub 账号登录 GitHub CLI（首次使用执行 `gh auth login`），下载安装包后用 npx 运行：
 
 ```bash
-gh release download v0.6.0 --repo eyotang/s3flow --pattern eyotang-s3flow-0.6.0.tgz
-npx --yes --package=./eyotang-s3flow-0.6.0.tgz s3get --help
-npx --yes --package=./eyotang-s3flow-0.6.0.tgz s3push --help
-npx --yes --package=./eyotang-s3flow-0.6.0.tgz s3tree --size s3://my-bucket/logs/
+gh release download v0.7.0 --repo eyotang/s3flow --pattern eyotang-s3flow-0.7.0.tgz
+npx --yes --package=./eyotang-s3flow-0.7.0.tgz s3get --help
+npx --yes --package=./eyotang-s3flow-0.7.0.tgz s3push --help
+npx --yes --package=./eyotang-s3flow-0.7.0.tgz s3tree --size s3://my-bucket/logs/
 ```
 
-也可在已登录 GitHub 的浏览器中从 [v0.6.0 发布页](https://github.com/eyotang/s3flow/releases/tag/v0.6.0) 下载 `eyotang-s3flow-0.6.0.tgz`，然后在下载目录执行上述 npx 命令。私有 Release 的匿名 URL 会返回 404，因此不能直接把下载 URL 传给 npx。
+也可在已登录 GitHub 的浏览器中从 [v0.7.0 发布页](https://github.com/eyotang/s3flow/releases/tag/v0.7.0) 下载 `eyotang-s3flow-0.7.0.tgz`，然后在下载目录执行上述 npx 命令。私有 Release 的匿名 URL 会返回 404，因此不能直接把下载 URL 传给 npx。
 
 把 `--help` 替换成下文对应命令的参数即可下载或上传。npx 会自动将包安装到 npm 缓存，并选择当前系统的二进制；Windows、macOS、Linux 的 x86_64 和 ARM64 使用相同命令。包中包含全部平台的 `s3flow` 统一二进制，无需 Go、编译器或安装脚本。再次运行可复用缓存；运行目录改变时请将 `--package` 指向安装包的实际路径。
 
 也可以一次安装，之后直接使用 `s3get` 和 `s3push`：
 
 ```bash
-npm install --global ./eyotang-s3flow-0.6.0.tgz
+npm install --global ./eyotang-s3flow-0.7.0.tgz
 s3get --help
 s3push --help
 ```
@@ -103,6 +103,10 @@ go build -o s3push ./cmd/s3push
 go build -o s3unzip ./cmd/s3unzip
 go build -o s3rg ./cmd/s3rg
 go build -o s3tree ./cmd/s3tree
+go build -o s3sync ./cmd/s3sync
+go build -o s3cp ./cmd/s3cp
+go build -o s3mv ./cmd/s3mv
+go build -o s3presign ./cmd/s3presign
 ```
 
 也可以使用 Makefile，产物位于 `bin/`。
@@ -116,19 +120,19 @@ make build
 本地构建全部六种系统/架构的发布包及 npx 安装包（需要 Go、Node.js/npm、Bash、tar、zip 和 shasum）：
 
 ```bash
-make release VERSION=v0.6.0
+make release VERSION=v0.7.0
 ```
 
-产物位于 `dist/v0.6.0/`，包含六个系统压缩包、通用 npm 安装包和 `checksums.txt`。构建禁用 CGO，原生压缩包包含统一入口和五个独立命令，npm 包内置统一二进制并提供六个启动入口。相同版本的输出目录存在时会拒绝覆盖。版本标签必须与 `package.json` 的版本一致；npm 安装包文件名由包名与版本号生成。
+产物位于 `dist/v0.7.0/`，包含六个系统压缩包、通用 npm 安装包和 `checksums.txt`。构建禁用 CGO，原生压缩包包含统一入口和九个独立命令，npm 包内置统一二进制并提供十个启动入口。相同版本的输出目录存在时会拒绝覆盖。版本标签必须与 `package.json` 的版本一致；npm 安装包文件名由包名与版本号生成。
 
 将发布配置提交并推送后，推送版本标签即可触发 GitHub Actions：
 
 ```bash
-git tag v0.6.0
-git push origin v0.6.0
+git tag v0.7.0
+git push origin v0.7.0
 ```
 
-工作流先在 Windows、macOS、Linux 上运行 Go 测试、Node.js 启动器测试和真实 npm 包安装/运行测试，通过后构建全部发布包并创建 GitHub Release。npm 测试在独立缓存中禁用网络和安装脚本，验证统一入口、五个子命令、兼容入口、退出码以及全局安装后清理缓存仍可运行。手动触发工作流只运行测试。带连字符的版本（例如 `v0.6.0-rc.1`）会标记为预发布。
+工作流先在 Windows、macOS、Linux 上运行 Go 测试、Node.js 启动器测试和真实 npm 包安装/运行测试，通过后构建全部发布包并创建 GitHub Release。npm 测试在独立缓存中禁用网络和安装脚本，验证统一入口、九个子命令、兼容入口、退出码以及全局安装后清理缓存仍可运行。手动触发工作流只运行测试。带连字符的版本（例如 `v0.7.0-rc.1`）会标记为预发布。
 
 需要发布到 npm registry 时，先确认包名的发布权限并完成 `npm login`，再使用 `npm publish <构建好的安装包.tgz> --access public` 发布；不能直接发布源码目录，因为其中没有内置二进制。当前 GitHub 工作流只向 GitHub Release 上传安装包。
 
@@ -369,12 +373,37 @@ s3tree -s s3://my-bucket/logs/
 
 `s3tree` 和 `s3flow s3tree` 与 `s3flow tree` 等效。可指定整个桶或目录前缀，末尾的 `/` 可省略。命令只调用分页的 `ListObjectsV2`，需要目标桶的 `s3:ListBucket` 权限。输出按名称排序，目录以 `/` 标记，末尾统计目录和对象数。加 `-s` 或 `--size` 会在对象名称后显示 `B`、`KiB`、`MiB` 等单位的大小，数据来自同一份对象列表。
 
+## 增量同步、复制、移动和临时下载链接
+
+```bash
+# 预览本地到 S3 的增量同步，去掉 --dryrun 后执行
+s3sync ./data/ s3://my-bucket/data/ --dryrun
+s3flow sync s3://my-bucket/data/ ./mirror/
+
+# 同一 S3 服务内跨桶复制，或移动单个对象
+s3cp -r s3://my-bucket/reports/ s3://backup-bucket/reports/
+s3mv s3://my-bucket/draft.csv s3://my-bucket/final.csv
+
+# 将对象直接写到标准输出或从标准输入上传
+s3cp s3://my-bucket/config.json - | jq .
+printf 'hello' | s3cp - s3://my-bucket/hello.txt
+
+# 生成有效期为 15 分钟的 GET 链接
+s3presign -p production s3://my-bucket/report.csv --expires-in 900
+```
+
+- **同步**。支持本地目录到 S3、S3 到本地目录，以及同一 endpoint 的两个 S3 前缀。按相对路径比较文件，在目标缺失、大小不同或源的修改时间较新时复制。时间按秒比较，同大小且同一秒内的内容变更可能跳过。下载会保留对象的修改时间。默认保留目标独有的文件，显式传入 `--delete` 后，只在所有复制成功后才清理这些文件。可用 `--delete --dryrun` 预览完整计划。
+- **复制和移动**。默认处理单个文件，目录或前缀使用 `-r`。单文件的目标是已有本地目录、桶根或以 `/` 结尾的前缀时沿用源文件名。覆盖同名目标需加 `--force`。`mv` 在目标提交成功后才删除对应源文件。S3 源使用 ETag 条件删除，若删除失败，命令会报告已保存的目标地址。批量操作逐个文件生效，空目录和零字节目录标记会跳过。
+- **大对象和管道**。S3 到 S3 使用服务端复制，超过 5 GiB 时自动分片复制。分片复制会读取源对象的元数据和标签，带标签的对象需要相应的标签读写权限。默认分片 128 MiB、并发 16，可用 `--part-size` 和 `-j/--concurrency` 调整。以 `-` 为目标时，标准输出只有对象内容。以 `-` 为源时，输入会暂存到本地临时文件，供分片读取和重试。
+- **临时下载链接**。`presign` 的标准输出只有签名 URL，默认 3600 秒，`--expires-in` 接受 1 至 604800 秒。使用临时凭据时，链接最迟随凭据到期。源对象使用普通 S3 URI，区域、endpoint 和凭据沿用所选 AWS 配置。
+
 ## 代码结构
 
 - `cmd/s3flow/`：Cobra 根命令、子命令装配、自更新入口与退出码。
-- `cmd/s3get/`、`cmd/s3push/`、`cmd/s3unzip/`、`cmd/s3rg/` 和 `cmd/s3tree/`：独立入口。
+- `cmd/s3get/`、`cmd/s3push/`、`cmd/s3unzip/`、`cmd/s3rg/`、`cmd/s3tree/`、`cmd/s3sync/`、`cmd/s3cp/`、`cmd/s3mv/` 和 `cmd/s3presign/`：独立入口。
 - `internal/get/`、`internal/push/`：可复用的下载、上传实现，以及各自的参数、界面和测试。
 - `internal/unzip/`：ZIP 索引读取、分片下载、流式解压、并行上传及校验清理。
+- `internal/objectcmd/`：增量同步、复制、移动和 GET URL 签名。
 - `internal/tree/`：分页列举 S3 对象和输出目录树。
 - `internal/pkg/`：共用的 AWS 配置、连接参数、S3 客户端、URI 解析、参数分区、字节大小和分片规划。
 - `internal/update/`：原生更新检测、下载进度、重试、校验和可执行文件替换。

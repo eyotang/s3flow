@@ -101,14 +101,27 @@ func planUpload(local, destination string) (string, []uploadFile, error) {
 }
 
 func uploadObject(ctx context.Context, client uploadAPI, bucket string, file uploadFile, partSize int64, concurrency int, force bool, report func(objectProgress)) (err error) {
-	if partSize < 5<<20 || partSize > 5<<30 || concurrency < 1 || concurrency > pkg.MaxConcurrency {
-		return errors.New("无效的上传分片大小或并发数")
-	}
 	handle, err := os.Open(file.local)
 	if err != nil {
 		return err
 	}
 	defer handle.Close()
+	condition := pkg.WriteCondition{}
+	if !force {
+		condition.IfNoneMatch = aws.String("*")
+	}
+	return uploadOpenFile(ctx, client, bucket, file.key, handle, partSize, concurrency, condition, report)
+}
+
+// UploadFile uploads an open regular file, including multipart transfers, without starting the TUI.
+func UploadFile(ctx context.Context, client *s3.Client, bucket, key string, file *os.File, partSize int64, concurrency int, condition pkg.WriteCondition) error {
+	return uploadOpenFile(ctx, client, bucket, key, file, partSize, concurrency, condition, nil)
+}
+
+func uploadOpenFile(ctx context.Context, client uploadAPI, bucket, key string, handle *os.File, partSize int64, concurrency int, condition pkg.WriteCondition, report func(objectProgress)) (err error) {
+	if partSize < 5<<20 || partSize > 5<<30 || concurrency < 1 || concurrency > pkg.MaxConcurrency {
+		return errors.New("无效的上传分片大小或并发数")
+	}
 	info, err := handle.Stat()
 	if err != nil {
 		return err
@@ -118,10 +131,6 @@ func uploadObject(ctx context.Context, client uploadAPI, bucket string, file upl
 	}
 	tracker := &uploadTracker{report: report, progress: objectProgress{stage: "上传中", total: info.Size(), totalParts: 1}}
 	tracker.emit(0, 0)
-	var condition *string
-	if !force {
-		condition = aws.String("*")
-	}
 	if info.Size() <= partSize {
 		tracker.startPart(1, info.Size())
 		// Empty objects have no payload. Avoid passing a non-nil stream with
@@ -130,7 +139,7 @@ func uploadObject(ctx context.Context, client uploadAPI, bucket string, file upl
 		if info.Size() > 0 {
 			body = &uploadReader{reader: io.NewSectionReader(handle, 0, info.Size()), tracker: tracker, part: 1}
 		}
-		_, err = client.PutObject(ctx, &s3.PutObjectInput{Bucket: aws.String(bucket), Key: aws.String(file.key), Body: body, ContentLength: aws.Int64(info.Size()), IfNoneMatch: condition})
+		_, err = client.PutObject(ctx, &s3.PutObjectInput{Bucket: aws.String(bucket), Key: aws.String(key), Body: body, ContentLength: aws.Int64(info.Size()), IfNoneMatch: condition.IfNoneMatch, IfMatch: condition.IfMatch})
 		if err == nil {
 			tracker.finishPart(1)
 		}
@@ -145,7 +154,7 @@ func uploadObject(ctx context.Context, client uploadAPI, bucket string, file upl
 	}
 	tracker.progress.totalParts = len(parts)
 	tracker.emit(0, 0)
-	created, err := client.CreateMultipartUpload(ctx, &s3.CreateMultipartUploadInput{Bucket: aws.String(bucket), Key: aws.String(file.key)})
+	created, err := client.CreateMultipartUpload(ctx, &s3.CreateMultipartUploadInput{Bucket: aws.String(bucket), Key: aws.String(key)})
 	if err != nil {
 		return err
 	}
@@ -160,7 +169,7 @@ func uploadObject(ctx context.Context, client uploadAPI, bucket string, file upl
 		tracker.stage("清理未完成上传")
 		cleanup, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
-		_, abortErr := client.AbortMultipartUpload(cleanup, &s3.AbortMultipartUploadInput{Bucket: aws.String(bucket), Key: aws.String(file.key), UploadId: created.UploadId})
+		_, abortErr := client.AbortMultipartUpload(cleanup, &s3.AbortMultipartUploadInput{Bucket: aws.String(bucket), Key: aws.String(key), UploadId: created.UploadId})
 		if abortErr != nil {
 			err = errors.Join(err, fmt.Errorf("清理未完成上传 %s 失败: %w", *created.UploadId, abortErr))
 		}
@@ -186,7 +195,7 @@ func uploadObject(ctx context.Context, client uploadAPI, bucket string, file upl
 				}
 				part := parts[index]
 				tracker.startPart(index+1, part.Size())
-				result, e := client.UploadPart(workerCtx, &s3.UploadPartInput{Bucket: aws.String(bucket), Key: aws.String(file.key), UploadId: created.UploadId, PartNumber: aws.Int32(int32(index + 1)), Body: &uploadReader{reader: io.NewSectionReader(handle, part.Start, part.Size()), tracker: tracker, part: index + 1}, ContentLength: aws.Int64(part.Size())})
+				result, e := client.UploadPart(workerCtx, &s3.UploadPartInput{Bucket: aws.String(bucket), Key: aws.String(key), UploadId: created.UploadId, PartNumber: aws.Int32(int32(index + 1)), Body: &uploadReader{reader: io.NewSectionReader(handle, part.Start, part.Size()), tracker: tracker, part: index + 1}, ContentLength: aws.Int64(part.Size())})
 				if e == nil && (result == nil || aws.ToString(result.ETag) == "") {
 					e = errors.New("S3 分片响应缺少 ETag")
 				}
@@ -212,7 +221,7 @@ func uploadObject(ctx context.Context, client uploadAPI, bucket string, file upl
 		return err
 	}
 	tracker.stage("合并分片")
-	_, err = client.CompleteMultipartUpload(ctx, &s3.CompleteMultipartUploadInput{Bucket: aws.String(bucket), Key: aws.String(file.key), UploadId: created.UploadId, MultipartUpload: &types.CompletedMultipartUpload{Parts: completed}, IfNoneMatch: condition})
+	_, err = client.CompleteMultipartUpload(ctx, &s3.CompleteMultipartUploadInput{Bucket: aws.String(bucket), Key: aws.String(key), UploadId: created.UploadId, MultipartUpload: &types.CompletedMultipartUpload{Parts: completed}, IfNoneMatch: condition.IfNoneMatch, IfMatch: condition.IfMatch})
 	if err != nil {
 		return err
 	}

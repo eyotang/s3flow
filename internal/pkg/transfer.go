@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 )
@@ -15,6 +16,11 @@ const (
 	MaxConcurrency     = 128
 	MaxParts           = int64(10000)
 )
+
+// WriteCondition pins the destination of a single or multipart S3 write.
+type WriteCondition struct {
+	IfMatch, IfNoneMatch *string
+}
 
 type Part struct {
 	Index int
@@ -123,4 +129,9 @@ func FormatBytes(value int64) string {
 		}
 	}
 	return fmt.Sprintf("%.1f %s", size, unit)
+}
+
+// SameFileState checks the identity, length and modification time of a regular file.
+func SameFileState(before, after os.FileInfo) bool {
+	return after.Mode().IsRegular() && os.SameFile(before, after) && before.Size() == after.Size() && before.ModTime().Equal(after.ModTime())
 }

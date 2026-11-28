@@ -3,6 +3,8 @@ package pkg
 import (
 	"context"
 	"errors"
+	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -55,4 +57,22 @@ func WalkObjects(ctx context.Context, client ObjectLister, bucket, prefix string
 		seen[next] = true
 		token = page.NextContinuationToken
 	}
+}
+
+// Map S3 keys literally; reject paths that cannot be represented safely rather
+// than cleaning them into a different file name.
+func RelativeObjectPath(prefix, key string) (string, error) {
+	if !strings.HasPrefix(key, prefix) {
+		return "", errors.New("S3 列表返回了前缀外的对象")
+	}
+	relative := strings.TrimPrefix(key, prefix)
+	if strings.ContainsAny(relative, "\\\x00:") || !filepath.IsLocal(relative) {
+		return "", fmt.Errorf("不安全的对象路径 %q", key)
+	}
+	for _, component := range strings.Split(relative, "/") {
+		if component == "" || component == "." || component == ".." {
+			return "", fmt.Errorf("不安全的对象路径 %q", key)
+		}
+	}
+	return filepath.FromSlash(relative), nil
 }

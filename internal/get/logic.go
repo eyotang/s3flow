@@ -50,6 +50,8 @@ type downloadRequest struct {
 	partSize      int64
 	concurrency   int
 	force         bool
+	preserveTime  bool
+	previous      os.FileInfo
 }
 
 type downloadProgress struct {
@@ -386,6 +388,23 @@ func runDownload(ctx context.Context, client s3API, request downloadRequest, eve
 	}
 }
 
+// FileDestination describes the local commit for a non-interactive download.
+// Previous, when set by sync, is the file observed while comparing directories.
+type FileDestination struct {
+	Root      *os.Root
+	Name      string
+	Overwrite bool
+	Previous  os.FileInfo
+}
+
+// DownloadFile reads the identified object into a temporary file and commits it atomically.
+func DownloadFile(ctx context.Context, client *s3.Client, bucket, key string, head *s3.HeadObjectOutput, dest FileDestination, partSize int64, concurrency int) error {
+	return downloadObject(ctx, client, downloadRequest{
+		bucket: bucket, key: key, head: head, root: dest.Root, destination: dest.Name, force: dest.Overwrite,
+		partSize: partSize, concurrency: concurrency, preserveTime: true, previous: dest.Previous,
+	}, func(downloadProgress) {})
+}
+
 func downloadObject(ctx context.Context, client s3API, request downloadRequest, report progressFunc) error {
 	head := request.head
 	var err error
@@ -423,11 +442,13 @@ func downloadObject(ctx context.Context, client s3API, request downloadRequest, 
 
 	destination := request.destination
 	lstat, mkdirAll, remove := os.Lstat, os.MkdirAll, os.Remove
+	chtimes := os.Chtimes
 	createTemp := os.CreateTemp
 	commit := commitDownload
 	if request.root != nil {
 		root := request.root
 		lstat, mkdirAll, remove = root.Lstat, root.MkdirAll, root.Remove
+		chtimes = root.Chtimes
 		createTemp = func(dir, pattern string) (*os.File, error) {
 			return root.OpenFile(filepath.Join(dir, ".s3flow-"+rand.Text()+".part"), os.O_RDWR|os.O_CREATE|os.O_EXCL, 0600)
 		}
@@ -483,6 +504,11 @@ func downloadObject(ctx context.Context, client s3API, request downloadRequest, 
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	if request.preserveTime && head.LastModified != nil {
+		if err := chtimes(temporaryName, *head.LastModified, *head.LastModified); err != nil {
+			return err
+		}
+	}
 	if err := temporary.Sync(); err != nil {
 		return fmt.Errorf("同步临时文件: %w", err)
 	}
@@ -494,6 +520,15 @@ func downloadObject(ctx context.Context, client s3API, request downloadRequest, 
 	}
 	if err := ctx.Err(); err != nil {
 		return err
+	}
+	if request.previous != nil {
+		current, err := lstat(destination)
+		if err != nil {
+			return err
+		}
+		if !pkg.SameFileState(request.previous, current) {
+			return fmt.Errorf("local destination changed during sync: %s", destination)
+		}
 	}
 	if err := commit(ctx, temporaryName, destination, request.force); err != nil {
 		return err
@@ -777,24 +812,6 @@ func (w *countingWriter) Write(data []byte) (int, error) {
 	return n, err
 }
 
-// Map S3 keys literally; reject paths that cannot be represented safely rather
-// than cleaning them into a different file name.
-func relativeObjectPath(prefix, key string) (string, error) {
-	if !strings.HasPrefix(key, prefix) {
-		return "", errors.New("S3 列表返回了前缀外的对象")
-	}
-	relative := strings.TrimPrefix(key, prefix)
-	if strings.ContainsAny(relative, "\\\x00:") || !filepath.IsLocal(relative) {
-		return "", fmt.Errorf("不安全的对象路径 %q", key)
-	}
-	for _, component := range strings.Split(relative, "/") {
-		if component == "" || component == "." || component == ".." {
-			return "", fmt.Errorf("不安全的对象路径 %q", key)
-		}
-	}
-	return filepath.FromSlash(relative), nil
-}
-
 func downloadDirectory(ctx context.Context, client s3API, request downloadRequest, report progressFunc) error {
 	lister, ok := client.(pkg.ObjectLister)
 	if !ok {
@@ -813,7 +830,7 @@ func downloadDirectory(ctx context.Context, client s3API, request downloadReques
 		if strings.HasSuffix(key, "/") && aws.ToInt64(object.Size) == 0 {
 			return nil
 		}
-		relative, err := relativeObjectPath(request.key, key)
+		relative, err := pkg.RelativeObjectPath(request.key, key)
 		if err != nil {
 			return err
 		}

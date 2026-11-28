@@ -10,11 +10,15 @@ const subcommands = new Map([
   ['s3unzip', 'unzip'],
   ['s3rg', 'rg'],
   ['s3tree', 'tree'],
+  ['s3sync', 'sync'],
+  ['s3cp', 'cp'],
+  ['s3mv', 'mv'],
+  ['s3presign', 'presign'],
 ]);
 
 function binaryPath(command, platform = process.platform, arch = process.arch) {
   if (command !== 's3flow') {
-    throw new Error(`Unknown command: ${command}. Use get, push, unzip, rg or tree (aliases: s3get, s3push, s3unzip, s3rg, s3tree).`);
+    throw new Error(`Unknown command: ${command}. Run s3flow --help to list available commands.`);
   }
   if (!['win32', 'darwin', 'linux'].includes(platform) || !['x64', 'arm64'].includes(arch)) {
     throw new Error(`Unsupported platform: ${platform}/${arch}. Supported: Windows, macOS, Linux on x64 or arm64.`);

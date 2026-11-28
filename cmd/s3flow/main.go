@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/eyotang/s3flow/internal/get"
+	"github.com/eyotang/s3flow/internal/objectcmd"
 	"github.com/eyotang/s3flow/internal/pkg"
 	"github.com/eyotang/s3flow/internal/push"
 	"github.com/eyotang/s3flow/internal/rg"
@@ -30,6 +31,9 @@ func newCommand() *cobra.Command {
 		return nil
 	}
 	root.AddCommand(get.NewCommand(), push.NewCommand(), unzip.NewCommand(), rg.NewCommand(), tree.NewCommand())
+	for _, name := range []string{"sync", "cp", "mv", "presign"} {
+		root.AddCommand(objectcmd.NewCommand(name))
+	}
 	return root
 }
 
